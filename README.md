@@ -55,6 +55,15 @@ Plano de ensino: https://programas-planos.inf.ufsc.br/planos/5297
 
 - Planilha: https://bit.ly/planilhaCG20262
 
+## Entregas de trabalhos
+
+Os trabalhos são incrementais. Cada entrega é marcada em Git:
+
+- **Branch de desenvolvimento:** `trabalho/N.M` (ex.: `trabalho/1.1`)
+- **Tag de entrega:** `entrega-N.M` — snapshot imutável do que foi submetido (ex.: `entrega-1.1`)
+
+`git tag -n 'entrega-*'` lista todas as entregas com seus resumos. Convenção completa em [`CLAUDE.md`](CLAUDE.md#trabalho-deliveries).
+
 ## Pré-requisitos
 
 - **Comp:** INE5408, MTM3120, MTM3121
