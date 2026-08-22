@@ -1,0 +1,18 @@
+[project]
+name = "sgi-ine5420"
+version = "0.1.0"
+description = "Sistema Gráfico Interativo — INE5420 Computação Gráfica (UFSC)"
+requires-python = ">=3.11"
+dependencies = [
+    "PyQt6>=6.6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+# Tests import the domain/app packages from src/ directly.
+pythonpath = ["src"]
+testpaths = ["tests"]
