@@ -55,6 +55,17 @@ Plano de ensino: https://programas-planos.inf.ufsc.br/planos/5297
 
 - Planilha: https://bit.ly/planilhaCG20262
 
+## Como executar
+
+Requer [uv](https://docs.astral.sh/uv/) (ele instala Python e dependências sozinho).
+
+```bash
+uv run python src/main.py   # abre a GUI do SGI
+uv run pytest               # roda os testes do núcleo
+```
+
+Guia detalhado (interface, formato de coordenadas, notas de ambiente): [`docs/executar.md`](docs/executar.md).
+
 ## Entregas de trabalhos
 
 Os trabalhos são incrementais. Cada entrega é marcada em Git:
