@@ -19,6 +19,38 @@ No build system, tests, or dependencies exist yet. There is nothing to build, li
 - `docs/class_notes.md` is chronological: each class starts with a `# YYYY-MM-DD` (optionally `- Aula N - <topic>`) heading. Append new classes at the end, do not reorder.
 - Course technical decisions recorded so far (honor these if code is added): implementation in **Python 3**, GUI with **Qt** (chosen over Tkinter), using the **homogeneous coordinate system** (W=1) so 2D transforms compose as matrix multiplications.
 
+## Design principles (honor when writing code)
+
+The project must follow Clean Code and stay **decoupled**. Organize the codebase into **modules** with single, well-defined responsibilities, not one monolithic file.
+
+- **Separation of concerns / layering.** Keep the domain model (objects, geometry, transforms) independent of the GUI. The GUI depends on the domain; the domain never imports Qt. This lets the graphics core be unit-tested and reused without a display.
+- **Single Responsibility.** Each module/class does one thing: geometry primitives, the display file, the window→viewport mapping, the viewport widget, the main window, input parsing.
+- **Dependency direction points inward.** GUI → application/controller → domain. No inward layer knows about an outward one.
+- **Small, intention-revealing names.** No abbreviations that hide meaning; functions short and single-purpose; comments in English (see Language above).
+- **No premature abstraction.** Add interfaces/base classes only where a real second implementation is expected (e.g. a `GraphicObject` hierarchy the spec already implies: Point / Line / Wireframe).
+- **Testability first.** Pure functions for math (matrices, viewport transform); side effects (drawing, Qt events) pushed to the edges.
+
+### The render pipeline is the spine
+
+The whole module-1 arc (trabalhos 1.1–1.10) bolts onto **one render pipeline**, an ordered list of stages, not a monolithic `render()`:
+
+```
+world coords → [transforms] → [normalize/SCN] → [PROJECT 3D→2D] → [clip] → [viewport] → draw point/line
+```
+
+Each trabalho **inserts a stage** or **adds an object type** — it never rewrites existing stages. Honor this: the controller runs a stage list; new capabilities are new list entries.
+
+### Two seams keep 2D→3D cheap (design for them now)
+
+Going from 2D to 3D must touch exactly two pre-cut seams — build so nothing else moves:
+
+1. **Dimension-agnostic coordinates.** A point is a homogeneous vector (`[x,y,1]` in 2D, `[x,y,z,1]` in 3D); matrices are n×n. **Never name a type `Point2D`** — 2D→3D then adds a component and a matrix row, with zero renames.
+2. **Projection is a pipeline stage.** 3D is literally "insert a `PROJECT` stage" (parallel in 1.7, perspective in 1.8). Everything before it — display file, clipping, viewport, GUI — stays put.
+
+Guaranteeing the two seams suffice: every object implements `to_segments()` (wireframe, curve, surface, projected 3D all decompose to line segments before drawing), and the controller emits **neutral draw commands** (`DrawPoint`/`DrawLine`) so the GUI never knows the dimension and only ever calls `drawPoint`/`drawLine` (also a hard spec requirement).
+
+A concrete module sketch for the first deliverable — and the full 1.1–1.10 pipeline map — lives in `docs/design/trabalho-1.1-sketch.md`. Keep it updated as the architecture evolves across trabalhos.
+
 ## Trabalho deliveries
 
 The trabalhos (`docs/trabalhos/Trabalho N.M.md`) are **incremental**: each one extends the previous trabalho's code. Every delivery is marked in Git with a **work branch** (development area) + a **delivery tag** (frozen snapshot of what was submitted).
