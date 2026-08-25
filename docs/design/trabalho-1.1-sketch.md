@@ -86,6 +86,14 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > `parser`, `controller`, e a GUI mínima. Os demais módulos são **onde** cada trabalho futuro entra — listados
 > agora para que o 1.1 já ponha as coisas no lugar certo e nada precise mudar de lugar depois.
 
+> **Estado no 1.2 (implementado).** As duas costuras que o 1.2 pedia foram preenchidas **sem** reescrever
+> estágio algum: nasceu `domain/transforms.py` (fábricas de matriz + `apply` genérico, §4.2) e
+> `gui/transform_dialog.py` (lista de transformações a compor, §6). A composição da lista em uma única
+> matriz mora em `app/transform_request.py` (value objects `Translate`/`Scale`/`Rotate` + `build_matrix`),
+> mantendo a GUI fina e o domínio sem Qt. Cor por objeto entrou como atributo RGB em `GraphicObject`
+> (default preto) e viaja até a GUI pelos comandos neutros `DrawPoint`/`DrawLine`, que agora carregam `color`
+> — o pipeline (§5) não mudou de forma, só passou a ler `obj.color`.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início

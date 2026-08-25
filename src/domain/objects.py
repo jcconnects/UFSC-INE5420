@@ -29,13 +29,20 @@ class ObjectType(Enum):
 
 Segment = tuple[Point, Point]
 
+# RGB colour in the 0-255 range. Trabalho 1.2 lets the user pick a paint colour
+# per object at creation; it colours only the lines/borders (polygons stay
+# unfilled). RGB is the standard the spec wants for later .obj I/O.
+Color = tuple[int, int, int]
+BLACK: Color = (0, 0, 0)
+
 
 class GraphicObject(ABC):
     """Base for anything the display file can hold."""
 
-    def __init__(self, name: str, coordinates: list[Point]) -> None:
+    def __init__(self, name: str, coordinates: list[Point], color: Color = BLACK) -> None:
         self.name = name
         self.coordinates = coordinates
+        self.color = color
 
     @property
     @abstractmethod
@@ -68,8 +75,8 @@ class GraphicObject(ABC):
 class Point2D(GraphicObject):  # noqa: N801 - domain name, not a dimension claim
     """A single drawable point. (Name kept generic; dimension lives in coords.)"""
 
-    def __init__(self, name: str, position: Point) -> None:
-        super().__init__(name, [position])
+    def __init__(self, name: str, position: Point, color: Color = BLACK) -> None:
+        super().__init__(name, [position], color)
 
     @property
     def type(self) -> ObjectType:
@@ -85,8 +92,8 @@ class Point2D(GraphicObject):  # noqa: N801 - domain name, not a dimension claim
 class Line(GraphicObject):
     """A straight segment between exactly two points."""
 
-    def __init__(self, name: str, start: Point, end: Point) -> None:
-        super().__init__(name, [start, end])
+    def __init__(self, name: str, start: Point, end: Point, color: Color = BLACK) -> None:
+        super().__init__(name, [start, end], color)
 
     @property
     def type(self) -> ObjectType:
@@ -103,10 +110,10 @@ class Wireframe(GraphicObject):
     three or more points, matching a polygon; two points degenerate to a line.
     """
 
-    def __init__(self, name: str, points: list[Point]) -> None:
+    def __init__(self, name: str, points: list[Point], color: Color = BLACK) -> None:
         if len(points) < 2:
             raise ValueError("a wireframe needs at least two points")
-        super().__init__(name, points)
+        super().__init__(name, points, color)
 
     @property
     def type(self) -> ObjectType:
