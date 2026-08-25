@@ -49,3 +49,13 @@ def test_object_types():
     assert Point2D("p", Point(0, 0)).type is ObjectType.POINT
     assert Line("l", Point(0, 0), Point(1, 1)).type is ObjectType.LINE
     assert Wireframe("w", [Point(0, 0), Point(1, 1)]).type is ObjectType.WIREFRAME
+
+
+def test_color_defaults_to_black():
+    assert Point2D("p", Point(0, 0)).color == (0, 0, 0)
+
+
+def test_color_is_stored_per_object():
+    red = (255, 0, 0)
+    line = Line("l", Point(0, 0), Point(1, 1), color=red)
+    assert line.color == red

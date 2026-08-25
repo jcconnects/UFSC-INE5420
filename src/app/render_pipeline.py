@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.display_file import DisplayFile
+from domain.objects import BLACK, Color
 from domain.viewport import ViewportTransform
 
 
@@ -27,6 +28,7 @@ from domain.viewport import ViewportTransform
 class DrawPoint:
     x: float
     y: float
+    color: Color = BLACK
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class DrawLine:
     y1: float
     x2: float
     y2: float
+    color: Color = BLACK
 
 
 DrawCommand = DrawPoint | DrawLine
@@ -50,11 +53,12 @@ def render(display_file: DisplayFile, viewport: ViewportTransform) -> list[DrawC
     """
     commands: list[DrawCommand] = []
     for obj in display_file:
+        color = obj.color
         for start, end in obj.to_segments():
             px1, py1 = viewport.apply(start)
             px2, py2 = viewport.apply(end)
             if start is end or (px1 == px2 and py1 == py2):
-                commands.append(DrawPoint(px1, py1))
+                commands.append(DrawPoint(px1, py1, color))
             else:
-                commands.append(DrawLine(px1, py1, px2, py2))
+                commands.append(DrawLine(px1, py1, px2, py2, color))
     return commands

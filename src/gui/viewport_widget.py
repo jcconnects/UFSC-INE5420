@@ -9,7 +9,7 @@ controller. It never reaches into the domain directly.
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QPainter
+from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import QWidget
 
 from app.controller import Controller
@@ -30,6 +30,7 @@ class ViewportWidget(QWidget):
         painter = QPainter(self)
         commands = self.controller.render(self.width(), self.height())
         for command in commands:
+            painter.setPen(QPen(QColor(*command.color)))
             if isinstance(command, DrawPoint):
                 painter.drawPoint(int(command.x), int(command.y))
             elif isinstance(command, DrawLine):

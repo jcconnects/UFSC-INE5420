@@ -1,14 +1,17 @@
 """The main window: viewport canvas, object list, and pan/zoom controls.
 
 Assembles the GUI and wires user actions to the controller. Layout mirrors the
-Blender Top-Orthographic reference from the spec: pan, scroll-zoom, add object.
+Blender Top-Orthographic reference from the spec: pan, scroll-zoom, add object,
+and (trabalho 1.2) apply 2D transforms to the selected object.
 """
 
 from __future__ import annotations
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -17,11 +20,14 @@ from PyQt6.QtWidgets import (
 )
 
 from app.controller import Controller
+from app.transform_request import build_matrix
 
 from .object_dialog import ObjectDialog
+from .transform_dialog import TransformDialog
 from .viewport_widget import ViewportWidget
 
 PAN_STEP = 10.0
+_NAME_ROLE = Qt.ItemDataRole.UserRole
 
 
 class MainWindow(QMainWindow):
@@ -35,10 +41,13 @@ class MainWindow(QMainWindow):
 
         add_button = QPushButton("Add object")
         add_button.clicked.connect(self._on_add_object)
+        transform_button = QPushButton("Transform")
+        transform_button.clicked.connect(self._on_transform_object)
 
         sidebar = QVBoxLayout()
         sidebar.addWidget(self.object_list)
         sidebar.addWidget(add_button)
+        sidebar.addWidget(transform_button)
         sidebar.addWidget(self._pan_zoom_controls())
         sidebar_widget = QWidget()
         sidebar_widget.setLayout(sidebar)
@@ -78,11 +87,31 @@ class MainWindow(QMainWindow):
         dialog = ObjectDialog(self)
         if not dialog.exec():
             return
-        name, object_type, raw = dialog.values()
+        name, object_type, raw, color = dialog.values()
         try:
-            self.controller.add_object(name, object_type, raw)
+            self.controller.add_object(name, object_type, raw, color)
         except (ValueError, SyntaxError) as error:
             QMessageBox.warning(self, "Invalid object", str(error))
             return
-        self.object_list.addItem(f"{name} ({object_type.value})")
+        item = QListWidgetItem(f"{name} ({object_type.value})")
+        item.setData(_NAME_ROLE, name)
+        self.object_list.addItem(item)
+        self.viewport.update()
+
+    def _on_transform_object(self) -> None:
+        item = self.object_list.currentItem()
+        if item is None:
+            QMessageBox.information(self, "No selection", "Select an object first.")
+            return
+        name = item.data(_NAME_ROLE)
+        dialog = TransformDialog(name, self)
+        if not dialog.exec():
+            return
+        try:
+            obj = self.controller.display_file.get(name)
+            matrix = build_matrix(dialog.steps(), obj)
+            self.controller.transform_object(name, matrix)
+        except (ValueError, KeyError) as error:
+            QMessageBox.warning(self, "Transform failed", str(error))
+            return
         self.viewport.update()
