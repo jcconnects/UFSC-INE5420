@@ -20,8 +20,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from domain.display_file import DisplayFile
+from domain.normalization import to_scn
 from domain.objects import BLACK, Color
 from domain.viewport import ViewportTransform
+from domain.window import Window
 
 
 @dataclass(frozen=True)
@@ -43,20 +45,26 @@ class DrawLine:
 DrawCommand = DrawPoint | DrawLine
 
 
-def render(display_file: DisplayFile, viewport: ViewportTransform) -> list[DrawCommand]:
+def render(
+    display_file: DisplayFile, window: Window, viewport: ViewportTransform
+) -> list[DrawCommand]:
     """Run the pipeline and produce neutral draw commands.
 
     Stages, in order:
       1. to_segments  -- each object decomposes itself into world segments.
-      (normalize/SCN, project, clip enter here in later trabalhos.)
-      2. viewport     -- map each endpoint to pixels.
+      2. normalize    -- map each endpoint world -> SCN (bakes in window
+                         position/orientation; trabalho 1.3). SCN is computed
+                         per frame here, so window rotation never mutates the
+                         objects' world coordinates.
+      (project, clip enter here in later trabalhos.)
+      3. viewport     -- map each SCN endpoint to pixels.
     """
     commands: list[DrawCommand] = []
     for obj in display_file:
         color = obj.color
         for start, end in obj.to_segments():
-            px1, py1 = viewport.apply(start)
-            px2, py2 = viewport.apply(end)
+            px1, py1 = viewport.apply(to_scn(start, window))
+            px2, py2 = viewport.apply(to_scn(end, window))
             if start is end or (px1 == px2 and py1 == py2):
                 commands.append(DrawPoint(px1, py1, color))
             else:

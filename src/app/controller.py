@@ -7,12 +7,15 @@ pan, zoom) and receives neutral draw commands back.
 
 from __future__ import annotations
 
+import math
+
 from domain import transforms
 from domain.display_file import DisplayFile
-from domain.geometry import Point, compose
+from domain.geometry import Point
 from domain.objects import BLACK, Color, GraphicObject, Line, ObjectType, Point2D, Wireframe
 from domain.viewport import ViewportTransform
 from domain.window import Window
+from persistence import obj_descriptor
 from persistence.parser import parse_coordinates
 
 from .render_pipeline import DrawCommand, render
@@ -64,12 +67,31 @@ class Controller:
         """Centroid of a named object, for object-center scale/rotation."""
         return self.display_file.get(name).center()
 
-    def pan(self, dx: float, dy: float) -> None:
-        self.window.pan(dx, dy)
+    def pan(self, du: float, dv: float) -> None:
+        """Pan along the window's own axes (respects the user's "up")."""
+        self.window.pan(du, dv)
 
     def zoom(self, factor: float) -> None:
         self.window.zoom(factor)
 
+    def rotate_window(self, degrees: float) -> None:
+        """Rotate the window about its center. The scene counter-rotates."""
+        self.window.rotate(math.radians(degrees))
+
+    def save_obj(self, path: str) -> None:
+        """Write the whole world to a Wavefront .obj file."""
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(obj_descriptor.to_obj(self.display_file))
+
+    def load_obj(self, path: str) -> list[GraphicObject]:
+        """Replace the world with the objects read from a .obj file."""
+        with open(path, encoding="utf-8") as handle:
+            objects = obj_descriptor.from_obj(handle.read())
+        self.display_file.clear()
+        for obj in objects:
+            self.display_file.add(obj)
+        return objects
+
     def render(self, viewport_width: float, viewport_height: float) -> list[DrawCommand]:
-        viewport = ViewportTransform(self.window, viewport_width, viewport_height)
-        return render(self.display_file, viewport)
+        viewport = ViewportTransform(viewport_width, viewport_height)
+        return render(self.display_file, self.window, viewport)
