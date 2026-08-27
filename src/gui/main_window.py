@@ -7,6 +7,7 @@ and (trabalho 1.2) apply 2D transforms to the selected object.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -35,6 +36,53 @@ PAN_STEP = 10.0
 _NAME_ROLE = Qt.ItemDataRole.UserRole
 # Repo root: src/gui/main_window.py -> up 3 -> repo. samples/ ships beside src.
 _SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+
+# Sample colouring lives here, not in the .obj files: the files stay 100%
+# standard geometry (the trabalho 1.3 decision), and the paint colour is applied
+# at load time. `_SAMPLE_DEFAULT` is the theme colour for a whole scene, keyed by
+# file stem; `_OBJECT_COLORS` overrides individual objects by name (e.g. a red
+# roof on a brown house). Colours are RGB in 0-255, matching domain.objects.Color.
+_SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
+    "star": (218, 165, 32),          # goldenrod
+    "hexagon": (30, 144, 255),       # dodger blue
+    "flower": (219, 68, 130),        # rose
+    "gear": (90, 100, 110),          # steel grey
+    "house": (120, 72, 48),          # brown
+    "nested_stars": (148, 0, 211),   # violet
+    "star_of_david": (33, 97, 140),  # deep blue
+    "axes": (120, 120, 120),         # neutral grey
+}
+_OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
+    # house
+    "roof": (178, 34, 34),           # firebrick red roof
+    "door": (76, 44, 28),            # dark wood door
+    "window": (135, 206, 235),       # sky-blue glass
+    # flower
+    "core": (255, 200, 40),          # yellow center
+    # gear
+    "gear_bore": (40, 44, 52),       # dark bore
+    # axes
+    "x_axis": (200, 60, 60),         # red x
+    "y_axis": (60, 170, 90),         # green y
+    "origin": (240, 240, 240),       # light origin dot
+}
+# A collision-renamed object ("petal_1" -> "petal_1_2") should still match its
+# original palette entry. This strips exactly one trailing "_<digits>".
+_COLLISION_SUFFIX = re.compile(r"_\d+$")
+
+
+def _color_for(name: str, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Palette colour for an object: exact name, then de-suffixed, then default.
+
+    `name` may carry a collision suffix ("_2") added on append; that is stripped
+    once so a renamed duplicate keeps its palette entry.
+    """
+    if name in _OBJECT_COLORS:
+        return _OBJECT_COLORS[name]
+    base = _COLLISION_SUFFIX.sub("", name)
+    if base in _OBJECT_COLORS:
+        return _OBJECT_COLORS[base]
+    return default
 
 
 class MainWindow(QMainWindow):
@@ -134,10 +182,13 @@ class MainWindow(QMainWindow):
 
     def _load_sample(self, path) -> None:
         try:
-            self.controller.load_obj(str(path), replace=False)
+            objects = self.controller.load_obj(str(path), replace=False)
         except (OSError, ValueError, IndexError) as error:
             QMessageBox.warning(self, "Sample failed", str(error))
             return
+        default = _SAMPLE_DEFAULT.get(path.stem, (0, 0, 0))
+        for obj in objects:
+            obj.color = _color_for(obj.name, default)
         self._refresh_object_list()
         self.viewport.update()
 
