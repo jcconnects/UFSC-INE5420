@@ -1,0 +1,9 @@
+# SGI - INE5420 world export (Wavefront .obj)
+o hexagon
+v 0 60 0
+v -51.9615 30 0
+v -51.9615 -30 0
+v -0 -60 0
+v 51.9615 -30 0
+v 51.9615 30 0
+l 1 2 3 4 5 6 1

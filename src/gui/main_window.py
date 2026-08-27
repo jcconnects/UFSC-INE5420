@@ -7,6 +7,8 @@ and (trabalho 1.2) apply 2D transforms to the selected object.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDoubleSpinBox,
@@ -31,6 +33,8 @@ from .viewport_widget import ViewportWidget
 
 PAN_STEP = 10.0
 _NAME_ROLE = Qt.ItemDataRole.UserRole
+# Repo root: src/gui/main_window.py -> up 3 -> repo. samples/ ships beside src.
+_SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
 
 
 class MainWindow(QMainWindow):
@@ -109,6 +113,38 @@ class MainWindow(QMainWindow):
         import_action.triggered.connect(self._on_import_obj)
         export_action = file_menu.addAction("Export .obj...")
         export_action.triggered.connect(self._on_export_obj)
+        self._build_samples_menu()
+
+    def _build_samples_menu(self) -> None:
+        # Predefined scenes shipped as standard .obj files; each entry loads
+        # into the current world (append) so several can be combined on screen.
+        samples_menu = self.menuBar().addMenu("Samples")
+        files = sorted(_SAMPLES_DIR.glob("*.obj")) if _SAMPLES_DIR.is_dir() else []
+        if not files:
+            action = samples_menu.addAction("(no samples found)")
+            action.setEnabled(False)
+            return
+        for path in files:
+            label = path.stem.replace("_", " ").title()
+            action = samples_menu.addAction(label)
+            action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
+        samples_menu.addSeparator()
+        clear_action = samples_menu.addAction("Clear world")
+        clear_action.triggered.connect(self._clear_world)
+
+    def _load_sample(self, path) -> None:
+        try:
+            self.controller.load_obj(str(path), replace=False)
+        except (OSError, ValueError, IndexError) as error:
+            QMessageBox.warning(self, "Sample failed", str(error))
+            return
+        self._refresh_object_list()
+        self.viewport.update()
+
+    def _clear_world(self) -> None:
+        self.controller.display_file.clear()
+        self._refresh_object_list()
+        self.viewport.update()
 
     def _zoom(self, factor: float) -> None:
         self.controller.zoom(factor)

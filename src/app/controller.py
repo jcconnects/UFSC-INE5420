@@ -83,14 +83,29 @@ class Controller:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(obj_descriptor.to_obj(self.display_file))
 
-    def load_obj(self, path: str) -> list[GraphicObject]:
-        """Replace the world with the objects read from a .obj file."""
+    def load_obj(self, path: str, replace: bool = True) -> list[GraphicObject]:
+        """Read objects from a .obj file into the world.
+
+        replace=True (default) clears the world first; replace=False appends,
+        renaming any object whose name collides with one already present.
+        """
         with open(path, encoding="utf-8") as handle:
             objects = obj_descriptor.from_obj(handle.read())
-        self.display_file.clear()
+        if replace:
+            self.display_file.clear()
         for obj in objects:
+            obj.name = self._unique_name(obj.name)
             self.display_file.add(obj)
         return objects
+
+    def _unique_name(self, name: str) -> str:
+        """A name not yet used in the display file (suffixes on collision)."""
+        if name not in self.display_file:
+            return name
+        suffix = 2
+        while f"{name}_{suffix}" in self.display_file:
+            suffix += 1
+        return f"{name}_{suffix}"
 
     def render(self, viewport_width: float, viewport_height: float) -> list[DrawCommand]:
         viewport = ViewportTransform(viewport_width, viewport_height)
