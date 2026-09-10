@@ -7,9 +7,15 @@ and (trabalho 1.2) apply 2D transforms to the selected object.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QDoubleSpinBox,
+    QFileDialog,
     QHBoxLayout,
+    QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -28,6 +34,55 @@ from .viewport_widget import ViewportWidget
 
 PAN_STEP = 10.0
 _NAME_ROLE = Qt.ItemDataRole.UserRole
+# Repo root: src/gui/main_window.py -> up 3 -> repo. samples/ ships beside src.
+_SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+
+# Sample colouring lives here, not in the .obj files: the files stay 100%
+# standard geometry (the trabalho 1.3 decision), and the paint colour is applied
+# at load time. `_SAMPLE_DEFAULT` is the theme colour for a whole scene, keyed by
+# file stem; `_OBJECT_COLORS` overrides individual objects by name (e.g. a red
+# roof on a brown house). Colours are RGB in 0-255, matching domain.objects.Color.
+_SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
+    "star": (218, 165, 32),          # goldenrod
+    "hexagon": (30, 144, 255),       # dodger blue
+    "flower": (219, 68, 130),        # rose
+    "gear": (90, 100, 110),          # steel grey
+    "house": (120, 72, 48),          # brown
+    "nested_stars": (148, 0, 211),   # violet
+    "star_of_david": (33, 97, 140),  # deep blue
+    "axes": (120, 120, 120),         # neutral grey
+}
+_OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
+    # house
+    "roof": (178, 34, 34),           # firebrick red roof
+    "door": (76, 44, 28),            # dark wood door
+    "window": (135, 206, 235),       # sky-blue glass
+    # flower
+    "core": (255, 200, 40),          # yellow center
+    # gear
+    "gear_bore": (40, 44, 52),       # dark bore
+    # axes
+    "x_axis": (200, 60, 60),         # red x
+    "y_axis": (60, 170, 90),         # green y
+    "origin": (240, 240, 240),       # light origin dot
+}
+# A collision-renamed object ("petal_1" -> "petal_1_2") should still match its
+# original palette entry. This strips exactly one trailing "_<digits>".
+_COLLISION_SUFFIX = re.compile(r"_\d+$")
+
+
+def _color_for(name: str, default: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Palette colour for an object: exact name, then de-suffixed, then default.
+
+    `name` may carry a collision suffix ("_2") added on append; that is stripped
+    once so a renamed duplicate keeps its palette entry.
+    """
+    if name in _OBJECT_COLORS:
+        return _OBJECT_COLORS[name]
+    base = _COLLISION_SUFFIX.sub("", name)
+    if base in _OBJECT_COLORS:
+        return _OBJECT_COLORS[base]
+    return default
 
 
 class MainWindow(QMainWindow):
@@ -49,6 +104,7 @@ class MainWindow(QMainWindow):
         sidebar.addWidget(add_button)
         sidebar.addWidget(transform_button)
         sidebar.addWidget(self._pan_zoom_controls())
+        sidebar.addWidget(self._window_rotation_controls())
         sidebar_widget = QWidget()
         sidebar_widget.setLayout(sidebar)
         sidebar_widget.setMaximumWidth(200)
@@ -58,6 +114,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.viewport, stretch=1)
         layout.addWidget(sidebar_widget)
         self.setCentralWidget(central)
+
+        self._build_menu()
 
     def _pan_zoom_controls(self) -> QWidget:
         container = QWidget()
@@ -75,12 +133,80 @@ class MainWindow(QMainWindow):
             layout.addWidget(button)
         return container
 
+    def _window_rotation_controls(self) -> QWidget:
+        # Window rotation is always about the window center, so a single angle
+        # field suffices (spec). Positive is counter-clockwise; the scene
+        # counter-rotates on screen.
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(QLabel("Window rotation"))
+        self.rotation_field = QDoubleSpinBox()
+        self.rotation_field.setRange(-360.0, 360.0)
+        self.rotation_field.setDecimals(1)
+        self.rotation_field.setSingleStep(15.0)
+        self.rotation_field.setValue(15.0)
+        self.rotation_field.setSuffix(" deg")
+        layout.addWidget(self.rotation_field)
+        rotate_ccw = QPushButton("Rotate window")
+        rotate_ccw.clicked.connect(lambda: self._rotate_window(self.rotation_field.value()))
+        rotate_cw = QPushButton("Rotate opposite")
+        rotate_cw.clicked.connect(lambda: self._rotate_window(-self.rotation_field.value()))
+        layout.addWidget(rotate_ccw)
+        layout.addWidget(rotate_cw)
+        return container
+
+    def _build_menu(self) -> None:
+        file_menu = self.menuBar().addMenu("File")
+        import_action = file_menu.addAction("Import .obj...")
+        import_action.triggered.connect(self._on_import_obj)
+        export_action = file_menu.addAction("Export .obj...")
+        export_action.triggered.connect(self._on_export_obj)
+        self._build_samples_menu()
+
+    def _build_samples_menu(self) -> None:
+        # Predefined scenes shipped as standard .obj files; each entry loads
+        # into the current world (append) so several can be combined on screen.
+        samples_menu = self.menuBar().addMenu("Samples")
+        files = sorted(_SAMPLES_DIR.glob("*.obj")) if _SAMPLES_DIR.is_dir() else []
+        if not files:
+            action = samples_menu.addAction("(no samples found)")
+            action.setEnabled(False)
+            return
+        for path in files:
+            label = path.stem.replace("_", " ").title()
+            action = samples_menu.addAction(label)
+            action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
+        samples_menu.addSeparator()
+        clear_action = samples_menu.addAction("Clear world")
+        clear_action.triggered.connect(self._clear_world)
+
+    def _load_sample(self, path) -> None:
+        try:
+            objects = self.controller.load_obj(str(path), replace=False)
+        except (OSError, ValueError, IndexError) as error:
+            QMessageBox.warning(self, "Sample failed", str(error))
+            return
+        default = _SAMPLE_DEFAULT.get(path.stem, (0, 0, 0))
+        for obj in objects:
+            obj.color = _color_for(obj.name, default)
+        self._refresh_object_list()
+        self.viewport.update()
+
+    def _clear_world(self) -> None:
+        self.controller.display_file.clear()
+        self._refresh_object_list()
+        self.viewport.update()
+
     def _zoom(self, factor: float) -> None:
         self.controller.zoom(factor)
         self.viewport.update()
 
-    def _pan(self, dx: float, dy: float) -> None:
-        self.controller.pan(dx, dy)
+    def _pan(self, du: float, dv: float) -> None:
+        self.controller.pan(du, dv)
+        self.viewport.update()
+
+    def _rotate_window(self, degrees: float) -> None:
+        self.controller.rotate_window(degrees)
         self.viewport.update()
 
     def _on_add_object(self) -> None:
@@ -89,14 +215,22 @@ class MainWindow(QMainWindow):
             return
         name, object_type, raw, color = dialog.values()
         try:
-            self.controller.add_object(name, object_type, raw, color)
+            obj = self.controller.add_object(name, object_type, raw, color)
         except (ValueError, SyntaxError) as error:
             QMessageBox.warning(self, "Invalid object", str(error))
             return
-        item = QListWidgetItem(f"{name} ({object_type.value})")
-        item.setData(_NAME_ROLE, name)
-        self.object_list.addItem(item)
+        self._add_list_item(obj)
         self.viewport.update()
+
+    def _add_list_item(self, obj) -> None:
+        item = QListWidgetItem(f"{obj.name} ({obj.type.value})")
+        item.setData(_NAME_ROLE, obj.name)
+        self.object_list.addItem(item)
+
+    def _refresh_object_list(self) -> None:
+        self.object_list.clear()
+        for obj in self.controller.display_file:
+            self._add_list_item(obj)
 
     def _on_transform_object(self) -> None:
         item = self.object_list.currentItem()
@@ -115,3 +249,30 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Transform failed", str(error))
             return
         self.viewport.update()
+
+    def _on_import_obj(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import .obj", "", "Wavefront OBJ (*.obj)"
+        )
+        if not path:
+            return
+        try:
+            self.controller.load_obj(path)
+        except (OSError, ValueError, IndexError) as error:
+            QMessageBox.warning(self, "Import failed", str(error))
+            return
+        self._refresh_object_list()
+        self.viewport.update()
+
+    def _on_export_obj(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export .obj", "", "Wavefront OBJ (*.obj)"
+        )
+        if not path:
+            return
+        if not path.endswith(".obj"):
+            path += ".obj"
+        try:
+            self.controller.save_obj(path)
+        except OSError as error:
+            QMessageBox.warning(self, "Export failed", str(error))

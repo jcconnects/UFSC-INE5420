@@ -1,0 +1,11 @@
+# SGI - INE5420 world export (Wavefront .obj)
+o triangle_up
+v 0 60 0
+v -51.9615 -30 0
+v 51.9615 -30 0
+l 1 2 3 1
+o triangle_down
+v 0 -60 0
+v 51.9615 30 0
+v -51.9615 30 0
+l 4 5 6 4

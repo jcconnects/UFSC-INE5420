@@ -1,0 +1,12 @@
+# SGI - INE5420 world export (Wavefront .obj)
+o x_axis
+v -80 0 0
+v 80 0 0
+l 1 2
+o y_axis
+v 0 -80 0
+v 0 80 0
+l 3 4
+o origin
+v 0 0 0
+p 5

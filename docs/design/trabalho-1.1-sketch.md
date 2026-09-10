@@ -94,6 +94,24 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > (default preto) e viaja até a GUI pelos comandos neutros `DrawPoint`/`DrawLine`, que agora carregam `color`
 > — o pipeline (§5) não mudou de forma, só passou a ler `obj.color`.
 
+> **Estado no 1.3 (implementado).** As três costuras que o 1.3 pedia estavam pré-cortadas e foram apenas
+> preenchidas, sem reescrever estágio algum. (1) **Rotação da window:** `domain/window.py` ganhou `angle`,
+> `rotate(dθ)` e os vetores de base (`up_vector`/`right_vector`); o `pan` passou a mover ao longo dos eixos
+> da window (respeita o "para cima" do usuário) — em θ=0 é idêntico ao 1.2, sem regressão. (2) **Sistema de
+> Coordenadas Normalizado (SCN):** nasceu `domain/normalization.py` (§4.6) com `world_to_scn_matrix` =
+> `compose(translate(-centro), rotation(-angle), scaling(2/w, 2/h))`; é ele que gira o mundo na direção
+> contrária à da window. O estágio `normalize` foi **inserido** no pipeline (§5) entre `to_segments` e
+> `viewport` — a lista virou `[to_segments, normalize(SCN), viewport]`, exatamente o desenho previsto.
+> **Decisão:** o SCN é recalculado **a cada frame** no pipeline (a spec permite "na cache *ou* na hora do
+> desenho"); escolhido por simplicidade/corretude, sem risco de cache stale. As coordenadas de mundo em
+> `obj.coordinates` **nunca** mudam com a rotação — `display_file.py` não precisou mudar. (3) **Viewport
+> desacoplado da window:** `domain/viewport.py` agora mapeia o quadrado fixo `[-1,1]²` (não mais os limites
+> da window), mantendo o fit isotrópico anti-distorção. **I/O `.obj`:** `persistence/obj_descriptor.py`
+> (§4.10) transcreve/lê Wavefront `.obj` (`o`/`v`/`p`/`l`, índices 1-based globais); cor **não** é gravada
+> (fica no default preto na leitura) para manter o arquivo 100% padrão. GUI: campo de ângulo + botões de
+> rotação na sidebar e menu *File → Import/Export .obj*; o `viewport_widget` continua desenhando só
+> `drawPoint`/`drawLine` — imune à mudança, como projetado.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
