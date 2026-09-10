@@ -12,6 +12,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QButtonGroup,
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
@@ -21,12 +22,14 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.controller import Controller
 from app.transform_request import build_matrix
+from domain.clipping import LineClipper
 
 from .object_dialog import ObjectDialog
 from .transform_dialog import TransformDialog
@@ -105,6 +108,7 @@ class MainWindow(QMainWindow):
         sidebar.addWidget(transform_button)
         sidebar.addWidget(self._pan_zoom_controls())
         sidebar.addWidget(self._window_rotation_controls())
+        sidebar.addWidget(self._clipping_controls())
         sidebar_widget = QWidget()
         sidebar_widget.setLayout(sidebar)
         sidebar_widget.setMaximumWidth(200)
@@ -154,6 +158,29 @@ class MainWindow(QMainWindow):
         layout.addWidget(rotate_ccw)
         layout.addWidget(rotate_cw)
         return container
+
+    def _clipping_controls(self) -> QWidget:
+        # Radio button to swap the line-clipping technique (spec 1.4). Polygon
+        # and point clipping are fixed; only the line method is user-selectable.
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(QLabel("Line clipping"))
+        self._clipper_group = QButtonGroup(container)
+        for clipper in LineClipper:
+            button = QRadioButton(clipper.value)
+            button.setChecked(clipper is self.controller.line_clipper)
+            button.toggled.connect(
+                lambda checked, c=clipper: self._on_clipper_selected(checked, c)
+            )
+            self._clipper_group.addButton(button)
+            layout.addWidget(button)
+        return container
+
+    def _on_clipper_selected(self, checked: bool, clipper: LineClipper) -> None:
+        if not checked:  # ignore the untoggle half of the radio-group signal
+            return
+        self.controller.set_line_clipper(clipper)
+        self.viewport.update()
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("File")
@@ -213,9 +240,9 @@ class MainWindow(QMainWindow):
         dialog = ObjectDialog(self)
         if not dialog.exec():
             return
-        name, object_type, raw, color = dialog.values()
+        name, object_type, raw, color, filled = dialog.values()
         try:
-            obj = self.controller.add_object(name, object_type, raw, color)
+            obj = self.controller.add_object(name, object_type, raw, color, filled)
         except (ValueError, SyntaxError) as error:
             QMessageBox.warning(self, "Invalid object", str(error))
             return

@@ -112,6 +112,23 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > rotação na sidebar e menu *File → Import/Export .obj*; o `viewport_widget` continua desenhando só
 > `drawPoint`/`drawLine` — imune à mudança, como projetado.
 
+> **Estado no 1.4 (implementado).** A costura que o 1.4 pedia — o estágio de **clipping** — estava pré-cortada
+> em §4.8 e foi apenas preenchida: nasceu `domain/clipping.py` (funções puras, sobre `Point`) e o estágio
+> `CLIP` foi **inserido** no pipeline (§5) entre `normalize` e `viewport`, virando
+> `[to_segments, normalize(SCN), CLIP, viewport]`. Clipa-se em **espaço SCN** contra o quadrado fixo `[-1,1]²`
+> (que já é a moldura do subcanvas em pixels), então a transformada de viewport recebe **só** o que sobra do
+> clip — exigência da spec. Três técnicas: **clipagem de pontos** (`clip_point`), **duas** de reta
+> intercambiáveis por radio button — **Cohen-Sutherland** e **Liang-Barsky** (enum `LineClipper`, selecionado
+> no `Controller` e lido pelo pipeline a cada frame) —, e **polígono** por **Sutherland-Hodgman**
+> (`sutherland_hodgman`). **Moldura/viewport menor que a área de desenho:** já existia desde 1.3 (o subcanvas
+> com `margin=20`), então nada mudou aqui — geometria fora da window vazava na margem e agora **some** na
+> borda vermelha, provando o clip. **Polígono preenchido:** `GraphicObject` ganhou o atributo `filled` (default
+> `False`, escolhido na criação via checkbox no `ObjectDialog`; só vale para wireframe). Aqui está a **única**
+> exceção ao "só `drawPoint`/`drawLine`": a spec 1.4 pede explicitamente as primitivas de preenchimento, então
+> um wireframe `filled` é clipado por Sutherland-Hodgman e emitido como o comando neutro **`DrawPolygon`**, que
+> a GUI pinta com `drawPolygon`; wireframes não preenchidos continuam saindo como `DrawLine`. `filled` **não**
+> é gravado no `.obj` (fica geometria pura, coerente com a decisão de cor do 1.3).
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início

@@ -17,11 +17,13 @@ the world, so a projected 3D cube arrives as the same DrawLines as a 2D square.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from domain import clipping
+from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
 from domain.normalization import to_scn
-from domain.objects import BLACK, Color
+from domain.objects import BLACK, Color, GraphicObject, ObjectType
 from domain.viewport import ViewportTransform
 from domain.window import Window
 
@@ -42,11 +44,29 @@ class DrawLine:
     color: Color = BLACK
 
 
-DrawCommand = DrawPoint | DrawLine
+@dataclass(frozen=True)
+class DrawPolygon:
+    """A filled polygon (trabalho 1.4).
+
+    Wireframe objects created as "filled" reach the GUI as this command so it can
+    call the language's fill primitive. The vertices are already clipped and in
+    pixels. Unfilled polygons still arrive as plain DrawLines, so the "only
+    drawPoint/drawLine" rule holds everywhere except this one explicit fill case
+    the 1.4 spec asks for.
+    """
+
+    points: tuple[tuple[float, float], ...] = field(default_factory=tuple)
+    color: Color = BLACK
+
+
+DrawCommand = DrawPoint | DrawLine | DrawPolygon
 
 
 def render(
-    display_file: DisplayFile, window: Window, viewport: ViewportTransform
+    display_file: DisplayFile,
+    window: Window,
+    viewport: ViewportTransform,
+    line_clipper: LineClipper = LineClipper.COHEN_SUTHERLAND,
 ) -> list[DrawCommand]:
     """Run the pipeline and produce neutral draw commands.
 
@@ -56,17 +76,66 @@ def render(
                          position/orientation; trabalho 1.3). SCN is computed
                          per frame here, so window rotation never mutates the
                          objects' world coordinates.
-      (project, clip enter here in later trabalhos.)
-      3. viewport     -- map each SCN endpoint to pixels.
+      3. CLIP         -- trim to the normalized [-1, 1] window (trabalho 1.4).
+                         Points, lines and polygons each use their own technique;
+                         line clipping honours the selected method.
+      4. viewport     -- map each *surviving* SCN vertex to pixels.
+      (project enters between normalize and clip in trabalho 1.7.)
+
+    Clipping runs in SCN space, before the viewport, so the viewport transform is
+    applied only to what the clip left behind -- the spec's requirement.
     """
     commands: list[DrawCommand] = []
     for obj in display_file:
-        color = obj.color
-        for start, end in obj.to_segments():
-            px1, py1 = viewport.apply(to_scn(start, window))
-            px2, py2 = viewport.apply(to_scn(end, window))
-            if start is end or (px1 == px2 and py1 == py2):
-                commands.append(DrawPoint(px1, py1, color))
-            else:
-                commands.append(DrawLine(px1, py1, px2, py2, color))
+        if obj.type is ObjectType.POINT:
+            _clip_point_object(obj, window, viewport, commands)
+        elif obj.filled and obj.type is ObjectType.WIREFRAME:
+            _clip_filled_polygon(obj, window, viewport, commands)
+        else:
+            _clip_line_object(obj, window, viewport, line_clipper, commands)
     return commands
+
+
+def _clip_point_object(
+    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+) -> None:
+    """Point clipping: keep the point only if it survives the clip window."""
+    scn = to_scn(obj.coordinates[0], window)
+    if clipping.clip_point(scn) is None:
+        return
+    px, py = viewport.apply(scn)
+    out.append(DrawPoint(px, py, obj.color))
+
+
+def _clip_line_object(
+    obj: GraphicObject,
+    window: Window,
+    viewport: ViewportTransform,
+    line_clipper: LineClipper,
+    out: list[DrawCommand],
+) -> None:
+    """Line clipping for each of an object's segments with the chosen technique."""
+    for start, end in obj.to_segments():
+        scn_start = to_scn(start, window)
+        scn_end = to_scn(end, window)
+        clipped = clipping.clip_line(scn_start, scn_end, line_clipper)
+        if clipped is None:
+            continue
+        px1, py1 = viewport.apply(clipped[0])
+        px2, py2 = viewport.apply(clipped[1])
+        if px1 == px2 and py1 == py2:
+            out.append(DrawPoint(px1, py1, obj.color))
+        else:
+            out.append(DrawLine(px1, py1, px2, py2, obj.color))
+
+
+def _clip_filled_polygon(
+    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+) -> None:
+    """Polygon clipping (Sutherland-Hodgman) for a filled wireframe."""
+    scn_vertices = [to_scn(point, window) for point in obj.coordinates]
+    clipped = clipping.sutherland_hodgman(scn_vertices)
+    if len(clipped) < 3:  # nothing (or a degenerate sliver) left to fill
+        return
+    pixels = tuple(viewport.apply(vertex) for vertex in clipped)
+    out.append(DrawPolygon(pixels, obj.color))

@@ -3,13 +3,16 @@
 The dialog only gathers raw input and hands it to the controller; it performs
 no coordinate parsing itself (that lives in persistence.parser). Trabalho 1.2
 adds the colour picker: the chosen RGB colours the object's lines/borders.
-Wireframe/filled (1.4) fields will be added here later.
+Trabalho 1.4 adds the "Filled" checkbox: the user decides at creation whether a
+polygon is drawn as a wireframe or filled. It only affects wireframes; points
+and lines have no interior to fill.
 """
 
 from __future__ import annotations
 
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -39,6 +42,12 @@ class ObjectDialog(QDialog):
         self.color_button.clicked.connect(self._pick_color)
         self._refresh_color_button()
 
+        # Filled applies to polygons only; disable it for point/line so the
+        # choice can never be misread as "a filled line".
+        self.filled_field = QCheckBox("Filled polygon")
+        self.type_field.currentIndexChanged.connect(self._sync_filled_enabled)
+        self._sync_filled_enabled()
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -50,7 +59,14 @@ class ObjectDialog(QDialog):
         layout.addRow("Type", self.type_field)
         layout.addRow("Coordinates", self.coordinates_field)
         layout.addRow("Color", self.color_button)
+        layout.addRow("Fill", self.filled_field)
         layout.addRow(buttons)
+
+    def _sync_filled_enabled(self) -> None:
+        is_wireframe = self.type_field.currentData() is ObjectType.WIREFRAME
+        self.filled_field.setEnabled(is_wireframe)
+        if not is_wireframe:
+            self.filled_field.setChecked(False)
 
     def _pick_color(self) -> None:
         initial = QColor(*self._color)
@@ -69,11 +85,12 @@ class ObjectDialog(QDialog):
             f"background-color: rgb({r}, {g}, {b}); color: {text_color};"
         )
 
-    def values(self) -> tuple[str, ObjectType, str, Color]:
-        """(name, type, raw coordinates string, RGB color) as entered."""
+    def values(self) -> tuple[str, ObjectType, str, Color, bool]:
+        """(name, type, raw coordinates string, RGB color, filled) as entered."""
         return (
             self.name_field.text().strip(),
             self.type_field.currentData(),
             self.coordinates_field.text().strip(),
             self._color,
+            self.filled_field.isChecked(),
         )

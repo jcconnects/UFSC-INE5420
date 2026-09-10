@@ -1,9 +1,12 @@
 """The canvas widget: executes neutral draw commands with points and lines only.
 
-Per the spec, only drawPoint/drawLine primitives are used -- never drawPolygon.
-The widget asks the controller for draw commands and paints them; it also turns
-mouse drags into pan and wheel scrolls into zoom, delegating both to the
-controller. It never reaches into the domain directly.
+Wireframes and lines are drawn with drawPoint/drawLine only. The single
+exception is trabalho 1.4's filled polygon: the spec asks for it explicitly
+("polígonos preenchidos, utilizando as primitivas de preenchimento"), so a
+DrawPolygon command is filled with drawPolygon. The widget asks the controller
+for draw commands and paints them; it also turns mouse drags into pan and wheel
+scrolls into zoom, delegating both to the controller. It never reaches into the
+domain directly.
 
 Subcanvas: the drawable widget is larger than the *subcanvas* -- the red-bordered
 inner rectangle the normalized window maps into. Geometry outside the window
@@ -15,12 +18,12 @@ domain's ViewportTransform.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPoint, QRectF, Qt
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt
+from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QWidget
 
 from app.controller import Controller
-from app.render_pipeline import DrawLine, DrawPoint
+from app.render_pipeline import DrawLine, DrawPoint, DrawPolygon
 
 ZOOM_IN_FACTOR = 0.9
 ZOOM_OUT_FACTOR = 1.1
@@ -44,10 +47,20 @@ class ViewportWidget(QWidget):
         painter.fillRect(self.rect(), _CANVAS_COLOR)
         commands = self.controller.render(self.width(), self.height(), SUBCANVAS_MARGIN)
         for command in commands:
-            painter.setPen(QPen(QColor(*command.color)))
-            if isinstance(command, DrawPoint):
+            color = QColor(*command.color)
+            if isinstance(command, DrawPolygon):
+                # The one fill case (trabalho 1.4): a polygon the user chose to
+                # fill, already clipped, painted with the language's fill
+                # primitive. Everything else stays point/line only.
+                painter.setPen(QPen(color))
+                painter.setBrush(QBrush(color))
+                painter.drawPolygon(QPolygonF([QPointF(x, y) for x, y in command.points]))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+            elif isinstance(command, DrawPoint):
+                painter.setPen(QPen(color))
                 painter.drawPoint(int(command.x), int(command.y))
             elif isinstance(command, DrawLine):
+                painter.setPen(QPen(color))
                 painter.drawLine(int(command.x1), int(command.y1), int(command.x2), int(command.y2))
         self._draw_subcanvas(painter)
 

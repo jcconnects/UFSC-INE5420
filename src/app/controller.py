@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 from domain import transforms
+from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
 from domain.geometry import Point
 from domain.objects import BLACK, Color, GraphicObject, Line, ObjectType, Point2D, Wireframe
@@ -25,6 +26,9 @@ class Controller:
     def __init__(self, window: Window | None = None) -> None:
         self.display_file = DisplayFile()
         self.window = window or Window(-100, -100, 100, 100)
+        # Trabalho 1.4: the user-selected line-clipping technique. The GUI's radio
+        # button flips this; the render pipeline reads it each frame.
+        self.line_clipper = LineClipper.COHEN_SUTHERLAND
 
     def add_object(
         self,
@@ -32,16 +36,21 @@ class Controller:
         object_type: ObjectType,
         raw_coordinates: str,
         color: Color = BLACK,
+        filled: bool = False,
     ) -> GraphicObject:
         """Parse coordinates and add a new object of the requested type."""
         points = parse_coordinates(raw_coordinates)
-        obj = self._build(name, object_type, points, color)
+        obj = self._build(name, object_type, points, color, filled)
         self.display_file.add(obj)
         return obj
 
     @staticmethod
     def _build(
-        name: str, object_type: ObjectType, points: list[Point], color: Color
+        name: str,
+        object_type: ObjectType,
+        points: list[Point],
+        color: Color,
+        filled: bool = False,
     ) -> GraphicObject:
         if object_type is ObjectType.POINT:
             if len(points) != 1:
@@ -52,8 +61,12 @@ class Controller:
                 raise ValueError("a line needs exactly two coordinates")
             return Line(name, points[0], points[1], color)
         if object_type is ObjectType.WIREFRAME:
-            return Wireframe(name, points, color)
+            return Wireframe(name, points, color, filled)
         raise ValueError(f"unknown object type: {object_type}")
+
+    def set_line_clipper(self, clipper: LineClipper) -> None:
+        """Choose which line-clipping technique the pipeline uses."""
+        self.line_clipper = clipper
 
     def transform_object(self, name: str, matrix) -> GraphicObject:
         """Apply a homogeneous matrix to a named object via the generic engine.
@@ -111,7 +124,7 @@ class Controller:
         self, viewport_width: float, viewport_height: float, margin: float = 0.0
     ) -> list[DrawCommand]:
         viewport = ViewportTransform(viewport_width, viewport_height, margin)
-        return render(self.display_file, self.window, viewport)
+        return render(self.display_file, self.window, viewport, self.line_clipper)
 
     def subcanvas_rect(
         self, viewport_width: float, viewport_height: float, margin: float = 0.0

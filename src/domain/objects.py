@@ -39,10 +39,20 @@ BLACK: Color = (0, 0, 0)
 class GraphicObject(ABC):
     """Base for anything the display file can hold."""
 
-    def __init__(self, name: str, coordinates: list[Point], color: Color = BLACK) -> None:
+    def __init__(
+        self,
+        name: str,
+        coordinates: list[Point],
+        color: Color = BLACK,
+        filled: bool = False,
+    ) -> None:
         self.name = name
         self.coordinates = coordinates
         self.color = color
+        # Trabalho 1.4: a closed object may be drawn filled with the language's
+        # fill primitive instead of as a wireframe. Only polygons honour it;
+        # points and lines have no interior, so it stays False for them.
+        self.filled = filled
 
     @property
     @abstractmethod
@@ -110,10 +120,12 @@ class Wireframe(GraphicObject):
     three or more points, matching a polygon; two points degenerate to a line.
     """
 
-    def __init__(self, name: str, points: list[Point], color: Color = BLACK) -> None:
+    def __init__(
+        self, name: str, points: list[Point], color: Color = BLACK, filled: bool = False
+    ) -> None:
         if len(points) < 2:
             raise ValueError("a wireframe needs at least two points")
-        super().__init__(name, points, color)
+        super().__init__(name, points, color, filled)
 
     @property
     def type(self) -> ObjectType:
