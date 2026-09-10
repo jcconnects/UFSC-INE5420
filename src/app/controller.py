@@ -107,6 +107,18 @@ class Controller:
             suffix += 1
         return f"{name}_{suffix}"
 
-    def render(self, viewport_width: float, viewport_height: float) -> list[DrawCommand]:
-        viewport = ViewportTransform(viewport_width, viewport_height)
+    def render(
+        self, viewport_width: float, viewport_height: float, margin: float = 0.0
+    ) -> list[DrawCommand]:
+        viewport = ViewportTransform(viewport_width, viewport_height, margin)
         return render(self.display_file, self.window, viewport)
+
+    def subcanvas_rect(
+        self, viewport_width: float, viewport_height: float, margin: float = 0.0
+    ) -> tuple[float, float, float, float]:
+        """Pixel bounds (x0, y0, x1, y1) of the subcanvas for the given size.
+
+        The GUI draws this as the clip-boundary border; it is the box clipping
+        will trim against (trabalho 1.4).
+        """
+        return ViewportTransform(viewport_width, viewport_height, margin).subcanvas_rect()

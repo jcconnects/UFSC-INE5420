@@ -37,3 +37,32 @@ def test_wide_viewport_centers_with_horizontal_margins():
     vt = ViewportTransform(400, 200)
     assert vt.apply(Point(-1, -1)) == (100.0, 200.0)
     assert vt.apply(Point(1, 1)) == (300.0, 0.0)
+
+
+def test_subcanvas_margin_insets_the_square():
+    # 240x240 widget with a 20px margin -> the SCN square fits a 200px subcanvas
+    # centered in the widget: corners at 20 and 220.
+    vt = ViewportTransform(240, 240, margin=20)
+    assert vt.subcanvas_rect() == (20.0, 20.0, 220.0, 220.0)
+    assert vt.apply(Point(-1, -1)) == (20.0, 220.0)
+    assert vt.apply(Point(1, 1)) == (220.0, 20.0)
+    assert vt.apply(Point(0, 0)) == (120.0, 120.0)
+
+
+def test_points_outside_window_land_in_the_margin():
+    # A normalized coordinate beyond +1 must map beyond the subcanvas edge but
+    # can still fall inside the widget -- that is the margin where unclipped
+    # geometry shows. At x=1.1 the pixel is past the 220 subcanvas edge.
+    vt = ViewportTransform(240, 240, margin=20)
+    px, _ = vt.apply(Point(1.1, 0))
+    assert px > 220.0  # outside the subcanvas
+    assert px < 240.0  # still inside the widget -> visible in the margin
+
+
+def test_no_distortion_with_margin_on_wide_viewport():
+    vt = ViewportTransform(400, 200, margin=20)
+    bottom_left = vt.apply(Point(-1, -1))
+    top_right = vt.apply(Point(1, 1))
+    width_px = abs(top_right[0] - bottom_left[0])
+    height_px = abs(top_right[1] - bottom_left[1])
+    assert width_px == height_px
