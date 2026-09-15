@@ -122,6 +122,14 @@ class Controller:
             self.display_file.add(obj)
         return objects
 
+    def unique_name(self, name: str) -> str:
+        """Public: a display-file name free of collisions (suffixes if taken).
+
+        Used when adding a sample the user may drop more than once, so the second
+        copy gets a fresh name instead of clashing.
+        """
+        return self._unique_name(name)
+
     def _unique_name(self, name: str) -> str:
         """A name not yet used in the display file (suffixes on collision)."""
         if name not in self.display_file:

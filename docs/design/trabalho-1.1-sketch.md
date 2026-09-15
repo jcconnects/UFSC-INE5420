@@ -147,7 +147,11 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > aceita a lista sem mudança. **`.obj`:** curvas são **puladas** na exportação (o subconjunto `p`/`l` usado
 > não expressa pontos de controle sem a extensão pesada `curv`/`cstype`; coerente com cor/`filled` também não
 > gravados). O 1.5 não exige `.obj` para curvas. **Amostragem (`k`)** é constante (`Curve2D.STEPS_PER_SEGMENT`),
-> não exposta na GUI — a spec pede a curva e seu clipping, não uma resolução ajustável.
+> não exposta na GUI — a spec pede a curva e seu clipping, não uma resolução ajustável. **Samples de curva:**
+> como o `.obj` não carrega pontos de controle, os exemplos de curva moram em código (`gui/curve_samples.py`,
+> dados puros) e o menu *Samples → Curves (Bézier)* os adiciona pelo mesmo caminho de uma curva digitada
+> (string `(x,y),…` → `controller.add_object`). `Controller.unique_name` virou público para o segundo clique
+> num mesmo sample ganhar nome novo em vez de colidir.
 
 ## 4. Módulos do domínio
 
