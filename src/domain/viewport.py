@@ -48,6 +48,16 @@ class ViewportTransform:
         inner_w, inner_h = self._inner_size()
         return min(inner_w, inner_h) / _SCN_SPAN
 
+    def pixels_per_scn_unit(self) -> float:
+        """Public: pixels covered by one SCN unit, identical on both axes.
+
+        The single source of truth for how SCN maps to pixels. Panning must use
+        this same isotropic scale, or a drag moves the world by a different
+        amount than it is drawn (the bug where geometry drifts off a non-square
+        widget and clips against the fitted square).
+        """
+        return self._scale()
+
     def subcanvas_rect(self) -> tuple[float, float, float, float]:
         """The subcanvas in pixels as (x0, y0, x1, y1) -- where SCN [-1,1] lands.
 

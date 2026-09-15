@@ -145,6 +145,23 @@ class Controller:
         viewport = ViewportTransform(viewport_width, viewport_height, margin)
         return render(self.display_file, self.window, viewport, self.line_clipper)
 
+    def pan_world_per_pixel(
+        self, viewport_width: float, viewport_height: float, margin: float = 0.0
+    ) -> tuple[float, float]:
+        """World units moved per screen pixel dragged, for (x, y).
+
+        Uses the viewport's single isotropic SCN->pixel scale, so a drag pans the
+        window by exactly as much as the scene is drawn. The two axes differ only
+        by the window's own width/height (equal for a square window).
+        """
+        viewport = ViewportTransform(viewport_width, viewport_height, margin)
+        scale = viewport.pixels_per_scn_unit()
+        if scale == 0:
+            return (0.0, 0.0)
+        # window spans its width/height across SCN span 2, which spans 2*scale px.
+        span_pixels = 2.0 * scale
+        return (self.window.width / span_pixels, self.window.height / span_pixels)
+
     def subcanvas_rect(
         self, viewport_width: float, viewport_height: float, margin: float = 0.0
     ) -> tuple[float, float, float, float]:
