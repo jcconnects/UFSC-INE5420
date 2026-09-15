@@ -13,7 +13,16 @@ from domain import transforms
 from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
 from domain.geometry import Point
-from domain.objects import BLACK, Color, GraphicObject, Line, ObjectType, Point2D, Wireframe
+from domain.objects import (
+    BLACK,
+    Color,
+    Curve2D,
+    GraphicObject,
+    Line,
+    ObjectType,
+    Point2D,
+    Wireframe,
+)
 from domain.viewport import ViewportTransform
 from domain.window import Window
 from persistence import obj_descriptor
@@ -62,6 +71,8 @@ class Controller:
             return Line(name, points[0], points[1], color)
         if object_type is ObjectType.WIREFRAME:
             return Wireframe(name, points, color, filled)
+        if object_type is ObjectType.CURVE:
+            return Curve2D(name, points, color)
         raise ValueError(f"unknown object type: {object_type}")
 
     def set_line_clipper(self, clipper: LineClipper) -> None:

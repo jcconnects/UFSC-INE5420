@@ -11,7 +11,7 @@ from app.render_pipeline import DrawLine, DrawPoint, DrawPolygon, render
 from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
 from domain.geometry import Point
-from domain.objects import Line, Point2D, Wireframe
+from domain.objects import Curve2D, Line, Point2D, Wireframe
 from domain.viewport import ViewportTransform
 from domain.window import Window
 
@@ -90,3 +90,41 @@ def test_selected_line_clipper_is_passed_through():
     cs = render(df, _world(), _viewport(), LineClipper.COHEN_SUTHERLAND)
     lb = render(df, _world(), _viewport(), LineClipper.LIANG_BARSKY)
     assert cs == lb
+
+
+# --- Curve clipping (trabalho 1.5): point-clip the generated points ---------
+
+
+def test_curve_fully_inside_draws_as_lines():
+    df = DisplayFile()
+    # All control points inside [-1, 1]; the whole curve stays inside.
+    controls = [Point(-0.5, 0.0), Point(-0.2, 0.5), Point(0.2, 0.5), Point(0.5, 0.0)]
+    df.add(Curve2D("c", controls))
+    commands = render(df, _world(), _viewport())
+    assert commands
+    assert all(isinstance(c, DrawLine) for c in commands)
+    # A curve inside is drawn as its full polyline: STEPS_PER_SEGMENT spans.
+    assert len(commands) == Curve2D.STEPS_PER_SEGMENT
+
+
+def test_curve_fully_outside_produces_nothing():
+    df = DisplayFile()
+    controls = [Point(5.0, 5.0), Point(6.0, 6.0), Point(7.0, 6.0), Point(8.0, 5.0)]
+    df.add(Curve2D("c", controls))
+    assert render(df, _world(), _viewport()) == []
+
+
+def test_curve_crossing_border_is_partially_clipped():
+    df = DisplayFile()
+    # Curve running left (inside) to far right (outside): some generated points
+    # are in the window, some out, so only the in-window spans are drawn.
+    controls = [Point(0.0, 0.0), Point(1.0, 0.0), Point(2.0, 0.0), Point(5.0, 0.0)]
+    df.add(Curve2D("c", controls))
+    commands = render(df, _world(), _viewport())
+    assert commands  # part of the curve is visible
+    # Clipped: fewer spans than a fully-inside curve, and every drawn endpoint
+    # lies within the 200px viewport (nothing leaks past the border).
+    assert len(commands) < Curve2D.STEPS_PER_SEGMENT
+    for line in commands:
+        assert isinstance(line, DrawLine)
+        assert 0.0 <= line.x1 <= 200.0 and 0.0 <= line.x2 <= 200.0

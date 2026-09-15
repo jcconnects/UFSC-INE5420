@@ -89,6 +89,8 @@ def render(
     for obj in display_file:
         if obj.type is ObjectType.POINT:
             _clip_point_object(obj, window, viewport, commands)
+        elif obj.type is ObjectType.CURVE:
+            _clip_curve_object(obj, window, viewport, commands)
         elif obj.filled and obj.type is ObjectType.WIREFRAME:
             _clip_filled_polygon(obj, window, viewport, commands)
         else:
@@ -105,6 +107,29 @@ def _clip_point_object(
         return
     px, py = viewport.apply(scn)
     out.append(DrawPoint(px, py, obj.color))
+
+
+def _clip_curve_object(
+    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+) -> None:
+    """Curve clipping by the method from the slides (5.6): point-clip the
+    generated points.
+
+    The curve is sampled into points, each mapped to SCN and tested with point
+    clipping. A drawn segment is kept only where both of its endpoints survive,
+    so the curve is drawn "até onde quero" -- runs of consecutive in-window
+    points become DrawLines, and the parts leaving the window simply stop. This
+    is the incremental blending-function clipping the slides describe, not
+    segment clipping against the border.
+    """
+    scn_points = [to_scn(point, window) for point in obj.generated_points()]
+    inside = [clipping.clip_point(p) is not None for p in scn_points]
+    for i in range(len(scn_points) - 1):
+        if not (inside[i] and inside[i + 1]):
+            continue
+        px1, py1 = viewport.apply(scn_points[i])
+        px2, py2 = viewport.apply(scn_points[i + 1])
+        out.append(DrawLine(px1, py1, px2, py2, obj.color))
 
 
 def _clip_line_object(

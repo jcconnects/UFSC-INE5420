@@ -42,10 +42,11 @@ class ObjectDialog(QDialog):
         self.color_button.clicked.connect(self._pick_color)
         self._refresh_color_button()
 
-        # Filled applies to polygons only; disable it for point/line so the
-        # choice can never be misread as "a filled line".
+        # Filled applies to polygons only; disable it for point/line/curve so
+        # the choice can never be misread as "a filled line".
         self.filled_field = QCheckBox("Filled polygon")
         self.type_field.currentIndexChanged.connect(self._sync_filled_enabled)
+        self.type_field.currentIndexChanged.connect(self._sync_coordinate_hint)
         self._sync_filled_enabled()
 
         buttons = QDialogButtonBox(
@@ -61,6 +62,18 @@ class ObjectDialog(QDialog):
         layout.addRow("Color", self.color_button)
         layout.addRow("Fill", self.filled_field)
         layout.addRow(buttons)
+
+        self._sync_coordinate_hint()
+
+    def _sync_coordinate_hint(self) -> None:
+        # A curve needs a chained control-point count (4, 7, 10, ...); nudge the
+        # user with the placeholder so the input format is obvious per type.
+        if self.type_field.currentData() is ObjectType.CURVE:
+            self.coordinates_field.setPlaceholderText(
+                "(x1,y1),(x2,y2),(x3,y3),(x4,y4),... — 4, 7, 10, ... points"
+            )
+        else:
+            self.coordinates_field.setPlaceholderText("(x1, y1),(x2, y2),...")
 
     def _sync_filled_enabled(self) -> None:
         is_wireframe = self.type_field.currentData() is ObjectType.WIREFRAME

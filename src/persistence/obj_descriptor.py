@@ -33,6 +33,13 @@ def to_obj(objects: Iterable[GraphicObject]) -> str:
     lines: list[str] = [_HEADER]
     next_index = 1  # .obj vertex indices are 1-based and global.
     for obj in objects:
+        if obj.type is ObjectType.CURVE:
+            # Bézier curves are defined by control points, which the p/l subset
+            # of .obj used here cannot express without the heavier curv/cstype
+            # extension. Rather than write misleading polyline geometry, curves
+            # are skipped on export (consistent with colour/fill not being
+            # persisted). Trabalho 1.5 does not require .obj for curves.
+            continue
         first_index = next_index
         lines.append(f"o {obj.name}")
         for point in obj.coordinates:
