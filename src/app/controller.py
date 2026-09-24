@@ -13,7 +13,16 @@ from domain import transforms
 from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
 from domain.geometry import Point
-from domain.objects import BLACK, Color, GraphicObject, Line, ObjectType, Point2D, Wireframe
+from domain.objects import (
+    BLACK,
+    Color,
+    Curve2D,
+    GraphicObject,
+    Line,
+    ObjectType,
+    Point2D,
+    Wireframe,
+)
 from domain.viewport import ViewportTransform
 from domain.window import Window
 from persistence import obj_descriptor
@@ -62,6 +71,8 @@ class Controller:
             return Line(name, points[0], points[1], color)
         if object_type is ObjectType.WIREFRAME:
             return Wireframe(name, points, color, filled)
+        if object_type is ObjectType.CURVE:
+            return Curve2D(name, points, color)
         raise ValueError(f"unknown object type: {object_type}")
 
     def set_line_clipper(self, clipper: LineClipper) -> None:
@@ -111,6 +122,14 @@ class Controller:
             self.display_file.add(obj)
         return objects
 
+    def unique_name(self, name: str) -> str:
+        """Public: a display-file name free of collisions (suffixes if taken).
+
+        Used when adding a sample the user may drop more than once, so the second
+        copy gets a fresh name instead of clashing.
+        """
+        return self._unique_name(name)
+
     def _unique_name(self, name: str) -> str:
         """A name not yet used in the display file (suffixes on collision)."""
         if name not in self.display_file:
@@ -125,6 +144,23 @@ class Controller:
     ) -> list[DrawCommand]:
         viewport = ViewportTransform(viewport_width, viewport_height, margin)
         return render(self.display_file, self.window, viewport, self.line_clipper)
+
+    def pan_world_per_pixel(
+        self, viewport_width: float, viewport_height: float, margin: float = 0.0
+    ) -> tuple[float, float]:
+        """World units moved per screen pixel dragged, for (x, y).
+
+        Uses the viewport's single isotropic SCN->pixel scale, so a drag pans the
+        window by exactly as much as the scene is drawn. The two axes differ only
+        by the window's own width/height (equal for a square window).
+        """
+        viewport = ViewportTransform(viewport_width, viewport_height, margin)
+        scale = viewport.pixels_per_scn_unit()
+        if scale == 0:
+            return (0.0, 0.0)
+        # window spans its width/height across SCN span 2, which spans 2*scale px.
+        span_pixels = 2.0 * scale
+        return (self.window.width / span_pixels, self.window.height / span_pixels)
 
     def subcanvas_rect(
         self, viewport_width: float, viewport_height: float, margin: float = 0.0

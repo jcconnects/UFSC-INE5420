@@ -70,6 +70,7 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 │    geometry.py          vetor homogêneo n-D + matrizes n×n      │
 │    transforms.py        fábricas de matriz (translate/scale/rot)│
 │    objects.py           GraphicObject: Point/Line/Wireframe/... │
+│    curves.py            blending functions de Bézier (1.5)      │
 │    display_file.py      coleção nomeada + cache de coords SCN   │
 │    window.py            região de mundo + pan/zoom/rotate       │
 │    normalization.py     mundo → SCN (view transform)            │
@@ -128,6 +129,29 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > um wireframe `filled` é clipado por Sutherland-Hodgman e emitido como o comando neutro **`DrawPolygon`**, que
 > a GUI pinta com `drawPolygon`; wireframes não preenchidos continuam saindo como `DrawLine`. `filled` **não**
 > é gravado no `.obj` (fica geometria pura, coerente com a decisão de cor do 1.3).
+
+> **Estado no 1.5 (implementado).** As duas costuras que o 1.5 pedia estavam pré-cortadas e foram apenas
+> preenchidas, sem reescrever estágio algum. (1) **Novo tipo de objeto `Curva2D`:** nasceu `domain/curves.py`
+> (matemática pura das *blending functions* de Bézier — a matriz `M_B` da Eq. 5.22 dos slides, amostragem
+> incremental com passo `t = 1/k`) e `objects.py` ganhou `ObjectType.CURVE` + a subclasse `Curve2D`. Uma
+> `Curve2D` guarda a lista de **pontos de controle** (4, 7, 10, …: 4 no 1º segmento, +3 por segmento extra,
+> ponto de junção compartilhado ⇒ continuidade **G(0)** no mínimo, exatamente o que a spec pede) e implementa
+> `to_segments()` amostrando a curva — então ela desenha e clipa como qualquer outro objeto, **sem** tocar na
+> GUI (que continua só `drawPoint`/`drawLine`). (2) **Clipping da curva pelo método dos slides (5.6):** é
+> **clipagem de pontos** sobre os pontos gerados, não clipagem de segmentos contra a borda. O pipeline (§5)
+> ganhou o ramo `_clip_curve_object`: amostra a curva, leva cada ponto a SCN, testa com `clip_point`, e emite
+> `DrawLine` só nos trechos em que **ambos** os extremos sobrevivem — a curva é desenhada "até onde quero" e
+> some ao sair da window. A lista de estágios não mudou de forma; a curva é só mais uma fonte de comandos
+> neutros. **Entrada:** o `ObjectDialog` já itera `ObjectType`, então "curve" aparece sozinho; o placeholder
+> das coordenadas vira dinâmico avisando o formato `(x1,y1),…` com contagem 4/7/10/… O parser (`eval` da spec)
+> aceita a lista sem mudança. **`.obj`:** curvas são **puladas** na exportação (o subconjunto `p`/`l` usado
+> não expressa pontos de controle sem a extensão pesada `curv`/`cstype`; coerente com cor/`filled` também não
+> gravados). O 1.5 não exige `.obj` para curvas. **Amostragem (`k`)** é constante (`Curve2D.STEPS_PER_SEGMENT`),
+> não exposta na GUI — a spec pede a curva e seu clipping, não uma resolução ajustável. **Samples de curva:**
+> como o `.obj` não carrega pontos de controle, os exemplos de curva moram em código (`gui/curve_samples.py`,
+> dados puros) e o menu *Samples → Curves (Bézier)* os adiciona pelo mesmo caminho de uma curva digitada
+> (string `(x,y),…` → `controller.add_object`). `Controller.unique_name` virou público para o segundo clique
+> num mesmo sample ganhar nome novo em vez de colidir.
 
 ## 4. Módulos do domínio
 
@@ -241,7 +265,7 @@ A GUI é imune à passagem 2D→3D: ela só executa `DrawCommand`s. Um cubo proj
 ```
 src/
   domain/
-    geometry.py  transforms.py  objects.py  display_file.py
+    geometry.py  transforms.py  objects.py  curves.py  display_file.py
     window.py    normalization.py  projection.py  clipping.py  viewport.py
   persistence/            # nome evita colisão com a stdlib `io`
     parser.py    obj_descriptor.py

@@ -18,6 +18,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 
+from . import curves
 from .geometry import Point, transform_point
 
 
@@ -25,6 +26,7 @@ class ObjectType(Enum):
     POINT = "point"
     LINE = "line"
     WIREFRAME = "wireframe"
+    CURVE = "curve"
 
 
 Segment = tuple[Point, Point]
@@ -137,3 +139,43 @@ class Wireframe(GraphicObject):
         if len(pts) >= 3:  # close the polygon
             segments.append((pts[-1], pts[0]))
         return segments
+
+
+class Curve2D(GraphicObject):
+    """One or more cubic Bézier curves chained with at least G(0) continuity.
+
+    Holds the flat list of control points (world coordinates). A valid chain has
+    4, 7, 10, ... points: four for the first segment, three more per additional
+    segment, with each join point shared -- so continuity is at least G(0), the
+    spec's minimum. `curves.sample_curve` turns the control points into the
+    generated polyline; `to_segments()` connects consecutive generated points so
+    the curve draws (and clips) as line segments like every other object.
+
+    Named Curve2D per the spec; the control points are still dimension-agnostic
+    Points, so nothing here blocks a future 3D curve.
+    """
+
+    # k: how finely each segment is sampled (step t = 1/k). Fixed here rather
+    # than exposed in the GUI -- the spec asks for the curve and its clipping,
+    # not a tunable resolution.
+    STEPS_PER_SEGMENT = 40
+
+    def __init__(self, name: str, control_points: list[Point], color: Color = BLACK) -> None:
+        if curves.segment_count(len(control_points)) == 0:
+            raise ValueError(
+                "a curve needs 4, 7, 10, ... control points for chained "
+                f"Bézier segments (got {len(control_points)})"
+            )
+        super().__init__(name, control_points, color)
+
+    @property
+    def type(self) -> ObjectType:
+        return ObjectType.CURVE
+
+    def generated_points(self) -> list[Point]:
+        """The sampled polyline points, used both to draw and to clip the curve."""
+        return curves.sample_curve(self.coordinates, self.STEPS_PER_SEGMENT)
+
+    def to_segments(self) -> list[Segment]:
+        points = self.generated_points()
+        return [(points[i], points[i + 1]) for i in range(len(points) - 1)]

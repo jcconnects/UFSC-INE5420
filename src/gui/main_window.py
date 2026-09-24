@@ -30,7 +30,9 @@ from PyQt6.QtWidgets import (
 from app.controller import Controller
 from app.transform_request import build_matrix
 from domain.clipping import LineClipper
+from domain.objects import ObjectType
 
+from .curve_samples import CURVE_SAMPLES
 from .object_dialog import ObjectDialog
 from .transform_dialog import TransformDialog
 from .viewport_widget import ViewportWidget
@@ -203,9 +205,36 @@ class MainWindow(QMainWindow):
             label = path.stem.replace("_", " ").title()
             action = samples_menu.addAction(label)
             action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
+        self._build_curve_samples_menu(samples_menu)
         samples_menu.addSeparator()
         clear_action = samples_menu.addAction("Clear world")
         clear_action.triggered.connect(self._clear_world)
+
+    def _build_curve_samples_menu(self, samples_menu) -> None:
+        # Bézier curve demos (trabalho 1.5). They live in code, not .obj (the
+        # p/l format cannot carry control points), so they are added straight
+        # through the controller instead of loaded as files.
+        samples_menu.addSeparator()
+        curves_menu = samples_menu.addMenu("Curves (Bézier)")
+        for sample in CURVE_SAMPLES:
+            label = sample.name.replace("curve_", "").replace("_", " ").title()
+            action = curves_menu.addAction(label)
+            action.triggered.connect(lambda _checked, s=sample: self._add_curve_sample(s))
+
+    def _add_curve_sample(self, sample) -> None:
+        # Append a curve sample using the mandated (x,y),... input string, so it
+        # travels the exact same path as a curve typed into the dialog. The name
+        # is de-duplicated like .obj loads, and the colour is applied here.
+        name = self.controller.unique_name(sample.name)
+        try:
+            obj = self.controller.add_object(
+                name, ObjectType.CURVE, sample.as_input_string(), sample.color
+            )
+        except (ValueError, SyntaxError) as error:
+            QMessageBox.warning(self, "Curve sample failed", str(error))
+            return
+        self._add_list_item(obj)
+        self.viewport.update()
 
     def _load_sample(self, path) -> None:
         try:

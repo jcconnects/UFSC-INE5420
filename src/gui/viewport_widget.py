@@ -97,13 +97,14 @@ class ViewportWidget(QWidget):
         position = event.position().toPoint()
         delta = position - self._last_drag
         self._last_drag = position
-        # Screen pixels -> world units: scale by window size over the subcanvas
-        # size (the box the window maps into), invert both axes so the world
-        # follows the drag naturally.
-        inner_w = max(self.width() - 2 * SUBCANVAS_MARGIN, 1)
-        inner_h = max(self.height() - 2 * SUBCANVAS_MARGIN, 1)
-        scale_x = self.controller.window.width / inner_w
-        scale_y = self.controller.window.height / inner_h
+        # Screen pixels -> world units using the viewport's own isotropic scale,
+        # the single source of truth for the SCN->pixel mapping. Deriving it here
+        # separately (widget minus margin) over-panned the y axis on a non-square
+        # widget, drifting the scene off-centre until it clipped against the
+        # fitted square. Invert both axes so the world follows the drag.
+        scale_x, scale_y = self.controller.pan_world_per_pixel(
+            self.width(), self.height(), SUBCANVAS_MARGIN
+        )
         self.controller.pan(-delta.x() * scale_x, delta.y() * scale_y)
         self.update()
 
