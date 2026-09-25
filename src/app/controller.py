@@ -15,6 +15,7 @@ from domain.display_file import DisplayFile
 from domain.geometry import Point
 from domain.objects import (
     BLACK,
+    BSpline,
     Color,
     Curve2D,
     GraphicObject,
@@ -73,6 +74,8 @@ class Controller:
             return Wireframe(name, points, color, filled)
         if object_type is ObjectType.CURVE:
             return Curve2D(name, points, color)
+        if object_type is ObjectType.BSPLINE:
+            return BSpline(name, points, color)
         raise ValueError(f"unknown object type: {object_type}")
 
     def set_line_clipper(self, clipper: LineClipper) -> None:
