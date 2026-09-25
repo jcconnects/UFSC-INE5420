@@ -9,6 +9,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.3.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.1",
+    "nbconvert>=7.17.1",
+    "numpy>=2.4.6",
     "pytest>=8.0",
 ]
 
