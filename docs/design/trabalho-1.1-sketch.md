@@ -71,6 +71,7 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 │    transforms.py        fábricas de matriz (translate/scale/rot)│
 │    objects.py           GraphicObject: Point/Line/Wireframe/... │
 │    curves.py            blending functions de Bézier (1.5)      │
+│    bspline.py           B-Spline uniforme, Forward Diff. (1.6)  │
 │    display_file.py      coleção nomeada + cache de coords SCN   │
 │    window.py            região de mundo + pan/zoom/rotate       │
 │    normalization.py     mundo → SCN (view transform)            │
@@ -153,6 +154,31 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > (string `(x,y),…` → `controller.add_object`). `Controller.unique_name` virou público para o segundo clique
 > num mesmo sample ganhar nome novo em vez de colidir.
 
+> **Estado no 1.6 (implementado).** O 1.6 **acrescentou um tipo de objeto** —
+> B-Spline cúbica uniforme por **Forward Differences** — sem reescrever estágio
+> algum, exatamente o mesmo movimento do 1.5. Nasceu `domain/bspline.py`
+> (matemática pura, sem numpy) e `objects.py` ganhou `ObjectType.BSPLINE` + a
+> subclasse `BSpline`. **Duas diferenças de projeto em relação à Bézier**, e só
+> elas: (1) **Método de amostragem.** A `Curve2D` avalia `T·M_B·G` por `t`; a
+> B-Spline **não** — a spec pede Forward Differences, então `bspline.py`
+> precomputa o estado de diferenças `[f, Δf, Δ²f, Δ³f]` (matriz base `M_BS`,
+> `M_BS·G` por eixo) e avança a cúbica **só com somas**. É um motor de amostragem
+> novo, por isso módulo separado de `curves.py` — fundir esconderia o método que
+> está sendo avaliado. (2) **Estrutura de segmentos.** A Bézier encadeia de 3 em
+> 3 (4/7/10…); a B-Spline uniforme usa **janela deslizante de 4**: `N` pontos ⇒
+> `N-3` segmentos, qualquer `N≥4`, e **não interpola** os extremos (começa em
+> `(P1+4P2+P3)/6`). **Reuso sem mudança de forma:** `BSpline` expõe
+> `generated_points()`/`to_segments()` como a `Curve2D`, então o ramo
+> `_clip_curve_object` do pipeline (§5) passou a atender `CURVE` **e** `BSPLINE`
+> — clipagem por point-clipping dos pontos gerados (slides 5.6), sem estágio novo.
+> A GUI continua só `drawPoint`/`drawLine`. **Entrada:** o `ObjectDialog` já itera
+> `ObjectType` ⇒ "bspline" aparece sozinho; o placeholder vira dinâmico avisando
+> "4 or more points". **`.obj`:** B-Splines são **puladas** na exportação, como as
+> curvas de Bézier (o subconjunto `p`/`l` não expressa pontos de controle).
+> **Samples:** `gui/curve_samples.py` ganhou `BSPLINE_SAMPLES` (os 10 pontos do
+> exercício 1.4.3 escalados + o caso mínimo de 4 pontos) e o menu *Samples →
+> B-Splines* os adiciona pelo mesmo caminho de uma B-Spline digitada.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
@@ -179,7 +205,8 @@ GraphicObject (abstrata)
        ├── Point        (1.1)
        ├── Line         (1.1)
        ├── Wireframe    (1.1)  polígono = lista de pontos ligados
-       ├── Curve2D      (1.5/1.6)  amostra a curva e devolve segmentos
+       ├── Curve2D      (1.5)  amostra a curva de Bézier e devolve segmentos
+       ├── BSpline      (1.6)  B-Spline uniforme por Forward Differences
        └── Surface      (1.9/1.10) malha de retalhos → segmentos
 ```
 - **`to_segments()` é a chave:** o renderer só sabe desenhar segmentos. Curva, superfície e objeto 3D
@@ -265,7 +292,7 @@ A GUI é imune à passagem 2D→3D: ela só executa `DrawCommand`s. Um cubo proj
 ```
 src/
   domain/
-    geometry.py  transforms.py  objects.py  curves.py  display_file.py
+    geometry.py  transforms.py  objects.py  curves.py  bspline.py  display_file.py
     window.py    normalization.py  projection.py  clipping.py  viewport.py
   persistence/            # nome evita colisão com a stdlib `io`
     parser.py    obj_descriptor.py

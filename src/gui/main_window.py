@@ -32,7 +32,7 @@ from app.transform_request import build_matrix
 from domain.clipping import LineClipper
 from domain.objects import ObjectType
 
-from .curve_samples import CURVE_SAMPLES
+from .curve_samples import BSPLINE_SAMPLES, CURVE_SAMPLES
 from .object_dialog import ObjectDialog
 from .transform_dialog import TransformDialog
 from .viewport_widget import ViewportWidget
@@ -206,6 +206,7 @@ class MainWindow(QMainWindow):
             action = samples_menu.addAction(label)
             action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
         self._build_curve_samples_menu(samples_menu)
+        self._build_bspline_samples_menu(samples_menu)
         samples_menu.addSeparator()
         clear_action = samples_menu.addAction("Clear world")
         clear_action.triggered.connect(self._clear_world)
@@ -219,19 +220,32 @@ class MainWindow(QMainWindow):
         for sample in CURVE_SAMPLES:
             label = sample.name.replace("curve_", "").replace("_", " ").title()
             action = curves_menu.addAction(label)
-            action.triggered.connect(lambda _checked, s=sample: self._add_curve_sample(s))
+            action.triggered.connect(
+                lambda _checked, s=sample: self._add_curve_sample(s, ObjectType.CURVE)
+            )
 
-    def _add_curve_sample(self, sample) -> None:
-        # Append a curve sample using the mandated (x,y),... input string, so it
-        # travels the exact same path as a curve typed into the dialog. The name
+    def _build_bspline_samples_menu(self, samples_menu) -> None:
+        # B-Spline demos (trabalho 1.6). Same in-code control points as the Bézier
+        # samples, added as ObjectType.BSPLINE via the same controller path.
+        bspline_menu = samples_menu.addMenu("B-Splines")
+        for sample in BSPLINE_SAMPLES:
+            label = sample.name.replace("bspline_", "").replace("_", " ").title()
+            action = bspline_menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked, s=sample: self._add_curve_sample(s, ObjectType.BSPLINE)
+            )
+
+    def _add_curve_sample(self, sample, object_type: ObjectType) -> None:
+        # Append a curve/B-Spline sample using the mandated (x,y),... input string,
+        # so it travels the exact same path as one typed into the dialog. The name
         # is de-duplicated like .obj loads, and the colour is applied here.
         name = self.controller.unique_name(sample.name)
         try:
             obj = self.controller.add_object(
-                name, ObjectType.CURVE, sample.as_input_string(), sample.color
+                name, object_type, sample.as_input_string(), sample.color
             )
         except (ValueError, SyntaxError) as error:
-            QMessageBox.warning(self, "Curve sample failed", str(error))
+            QMessageBox.warning(self, "Sample failed", str(error))
             return
         self._add_list_item(obj)
         self.viewport.update()

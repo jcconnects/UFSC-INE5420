@@ -89,7 +89,7 @@ def render(
     for obj in display_file:
         if obj.type is ObjectType.POINT:
             _clip_point_object(obj, window, viewport, commands)
-        elif obj.type is ObjectType.CURVE:
+        elif obj.type in (ObjectType.CURVE, ObjectType.BSPLINE):
             _clip_curve_object(obj, window, viewport, commands)
         elif obj.filled and obj.type is ObjectType.WIREFRAME:
             _clip_filled_polygon(obj, window, viewport, commands)
@@ -113,14 +113,15 @@ def _clip_curve_object(
     obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
 ) -> None:
     """Curve clipping by the method from the slides (5.6): point-clip the
-    generated points.
+    generated points. Shared by Bézier curves (1.5) and B-Splines (1.6) -- both
+    expose generated_points(), so this branch is dimension- and curve-agnostic.
 
     The curve is sampled into points, each mapped to SCN and tested with point
     clipping. A drawn segment is kept only where both of its endpoints survive,
     so the curve is drawn "até onde quero" -- runs of consecutive in-window
     points become DrawLines, and the parts leaving the window simply stop. This
-    is the incremental blending-function clipping the slides describe, not
-    segment clipping against the border.
+    is the incremental point clipping the slides describe, not segment clipping
+    against the border.
     """
     scn_points = [to_scn(point, window) for point in obj.generated_points()]
     inside = [clipping.clip_point(p) is not None for p in scn_points]

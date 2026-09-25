@@ -68,9 +68,16 @@ class ObjectDialog(QDialog):
     def _sync_coordinate_hint(self) -> None:
         # A curve needs a chained control-point count (4, 7, 10, ...); nudge the
         # user with the placeholder so the input format is obvious per type.
-        if self.type_field.currentData() is ObjectType.CURVE:
+        object_type = self.type_field.currentData()
+        if object_type is ObjectType.CURVE:
             self.coordinates_field.setPlaceholderText(
                 "(x1,y1),(x2,y2),(x3,y3),(x4,y4),... — 4, 7, 10, ... points"
+            )
+        elif object_type is ObjectType.BSPLINE:
+            # A uniform cubic B-Spline needs 4+ control points (any count); it has
+            # N-3 segments over sliding windows of four.
+            self.coordinates_field.setPlaceholderText(
+                "(x1,y1),(x2,y2),(x3,y3),(x4,y4),... — 4 or more points"
             )
         else:
             self.coordinates_field.setPlaceholderText("(x1, y1),(x2, y2),...")

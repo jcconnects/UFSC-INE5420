@@ -83,3 +83,35 @@ _HEART = CurveSample(
 
 
 CURVE_SAMPLES: tuple[CurveSample, ...] = (_ARCH, _WAVE, _LOOP, _CIRCLE, _HEART)
+
+
+# --- B-Spline samples (trabalho 1.6) ---------------------------------------
+# Same CurveSample shape (name, control points, colour); the main window adds
+# these as ObjectType.BSPLINE. A uniform cubic B-Spline over N points draws N-3
+# segments and does not interpolate its endpoints, so the curve stays inside the
+# control polygon and starts short of the first point.
+
+# The 10 control points from the class exercise (1.4.3), scaled ~15x and centred
+# on the raw centroid (~(4, 2)) so the curve fills the window like the others.
+# Proves the 10 -> 7-segment sliding-window rule.
+_EXERCISE_10 = CurveSample(
+    name="bspline_exercise_10",
+    control_points=tuple(
+        ((x - 4.0) * 15.0, (y - 2.0) * 15.0)
+        for x, y in (
+            (1, 1), (2, 3), (3, 0), (4, 1), (5, 2),
+            (4, 4), (6, 4), (7, 4), (6, 2), (7, 1),
+        )
+    ),
+    color=(70, 130, 180),  # steel blue
+)
+
+# The minimum case: exactly 4 control points -> a single B-Spline segment.
+_MIN_4 = CurveSample(
+    name="bspline_min_4",
+    control_points=((-60, -30), (-20, 60), (20, 60), (60, -30)),
+    color=(154, 96, 200),  # amethyst
+)
+
+
+BSPLINE_SAMPLES: tuple[CurveSample, ...] = (_EXERCISE_10, _MIN_4)

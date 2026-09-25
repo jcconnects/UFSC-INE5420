@@ -18,7 +18,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from . import curves
+from . import bspline, curves
 from .geometry import Point, transform_point
 
 
@@ -27,6 +27,7 @@ class ObjectType(Enum):
     LINE = "line"
     WIREFRAME = "wireframe"
     CURVE = "curve"
+    BSPLINE = "bspline"
 
 
 Segment = tuple[Point, Point]
@@ -175,6 +176,49 @@ class Curve2D(GraphicObject):
     def generated_points(self) -> list[Point]:
         """The sampled polyline points, used both to draw and to clip the curve."""
         return curves.sample_curve(self.coordinates, self.STEPS_PER_SEGMENT)
+
+    def to_segments(self) -> list[Segment]:
+        points = self.generated_points()
+        return [(points[i], points[i + 1]) for i in range(len(points) - 1)]
+
+
+class BSpline(GraphicObject):
+    """A uniform cubic B-Spline drawn by Forward Differences (trabalho 1.6).
+
+    Holds the flat list of control points (world coordinates). Any 4 or more
+    points are valid: the curve has N-3 segments, each a sliding window of four
+    consecutive points, so it grows one segment per extra point (contrast
+    Curve2D's 4, 7, 10, ... Bézier chain). A uniform B-Spline does not interpolate
+    its endpoints. `bspline.sample_bspline` turns the control points into the
+    generated polyline via Forward Differences; `to_segments()` connects
+    consecutive generated points so the B-Spline draws (and clips) as line
+    segments like every other object -- so the pipeline reuses the curve branch
+    and the GUI is untouched.
+
+    Control points are dimension-agnostic Points, so nothing here blocks a future
+    3D B-Spline.
+    """
+
+    # k: how finely each segment is sampled (step t = 1/k). Fixed here, not
+    # exposed in the GUI -- the spec asks for the curve and the Forward
+    # Differences method, not a tunable resolution. Matches Curve2D.
+    STEPS_PER_SEGMENT = 40
+
+    def __init__(self, name: str, control_points: list[Point], color: Color = BLACK) -> None:
+        if bspline.segment_count(len(control_points)) == 0:
+            raise ValueError(
+                "a B-Spline needs at least 4 control points "
+                f"(got {len(control_points)})"
+            )
+        super().__init__(name, control_points, color)
+
+    @property
+    def type(self) -> ObjectType:
+        return ObjectType.BSPLINE
+
+    def generated_points(self) -> list[Point]:
+        """The sampled polyline points, used both to draw and to clip the curve."""
+        return bspline.sample_bspline(self.coordinates, self.STEPS_PER_SEGMENT)
 
     def to_segments(self) -> list[Segment]:
         points = self.generated_points()
