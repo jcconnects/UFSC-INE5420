@@ -4,9 +4,16 @@ Wireframes and lines are drawn with drawPoint/drawLine only. The single
 exception is trabalho 1.4's filled polygon: the spec asks for it explicitly
 ("polígonos preenchidos, utilizando as primitivas de preenchimento"), so a
 DrawPolygon command is filled with drawPolygon. The widget asks the controller
-for draw commands and paints them; it also turns mouse drags into pan and wheel
-scrolls into zoom, delegating both to the controller. It never reaches into the
-domain directly.
+for draw commands and paints them; it also turns mouse drags into navigation
+and wheel scrolls into zoom, delegating both to the controller. It never reaches
+into the domain directly.
+
+Mouse navigation (trabalho 1.7 adds the orbit, like Blender's view drag):
+    middle-drag  pan the window along its own axes
+    left-drag    orbit: yaw/pitch the window about its center (VRP), so the
+                 scene turns as if grabbed
+    wheel        zoom
+The current VRP/VPN is printed in the top margin as the view moves.
 
 Subcanvas: the drawable widget is larger than the *subcanvas* -- the red-bordered
 inner rectangle the normalized window maps into. Geometry outside the window
@@ -24,9 +31,12 @@ from PyQt6.QtWidgets import QWidget
 
 from app.controller import Controller
 from app.render_pipeline import DrawLine, DrawPoint, DrawPolygon
+from domain.window import WindowAxis
 
 ZOOM_IN_FACTOR = 0.9
 ZOOM_OUT_FACTOR = 1.1
+# Left-drag orbit sensitivity: window rotation per dragged pixel.
+ORBIT_DEGREES_PER_PIXEL = 0.5
 
 # Pixel inset of the subcanvas (red border) from each widget edge.
 SUBCANVAS_MARGIN = 20.0
@@ -39,7 +49,8 @@ class ViewportWidget(QWidget):
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.controller = controller
-        self._last_drag: QPoint | None = None
+        # The button that started the current drag and the last mouse position.
+        self._drag: tuple[Qt.MouseButton, QPoint] | None = None
         self.setMinimumSize(400, 400)
 
     def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
@@ -81,6 +92,10 @@ class ViewportWidget(QWidget):
             int(y1) - 8,
             label,
         )
+        # Where the window is in 3D, right-aligned in the top margin.
+        vrp, vpn, _ = self.controller.view_vectors()
+        readout = f"VRP {_triple(vrp, 0)}   VPN {_triple(vpn, 2)}"
+        painter.drawText(int(x1) - metrics.horizontalAdvance(readout), int(y0) - 6, readout)
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt override
         factor = ZOOM_IN_FACTOR if event.angleDelta().y() > 0 else ZOOM_OUT_FACTOR
@@ -88,15 +103,30 @@ class ViewportWidget(QWidget):
         self.update()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
-        if event.button() == Qt.MouseButton.MiddleButton:
-            self._last_drag = event.position().toPoint()
+        if event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton):
+            self._drag = (event.button(), event.position().toPoint())
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
-        if self._last_drag is None:
+        if self._drag is None:
             return
+        button, last = self._drag
         position = event.position().toPoint()
-        delta = position - self._last_drag
-        self._last_drag = position
+        delta = position - last
+        self._drag = (button, position)
+        if button == Qt.MouseButton.LeftButton:
+            self._orbit(delta)
+        else:
+            self._pan(delta)
+        self.update()
+
+    def _orbit(self, delta: QPoint) -> None:
+        # Turning the window one way turns the scene the other, so negate both:
+        # dragging right swings the near side of the scene right, dragging down
+        # swings it down -- the scene follows the hand, as when grabbing it.
+        self.controller.rotate_window(-delta.x() * ORBIT_DEGREES_PER_PIXEL, WindowAxis.YAW)
+        self.controller.rotate_window(-delta.y() * ORBIT_DEGREES_PER_PIXEL, WindowAxis.PITCH)
+
+    def _pan(self, delta: QPoint) -> None:
         # Screen pixels -> world units using the viewport's own isotropic scale,
         # the single source of truth for the SCN->pixel mapping. Deriving it here
         # separately (widget minus margin) over-panned the y axis on a non-square
@@ -106,7 +136,12 @@ class ViewportWidget(QWidget):
             self.width(), self.height(), SUBCANVAS_MARGIN
         )
         self.controller.pan(-delta.x() * scale_x, delta.y() * scale_y)
-        self.update()
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802 - Qt override
-        self._last_drag = None
+        self._drag = None
+
+
+def _triple(values: tuple[float, ...], decimals: int) -> str:
+    """'(x, y, z)' rounded for display; rounding first avoids printing '-0'."""
+    rounded = [round(value, decimals) + 0.0 for value in values]
+    return "(" + ", ".join(f"{value:.{decimals}f}" for value in rounded) + ")"

@@ -179,6 +179,45 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > exercício 1.4.3 escalados + o caso mínimo de 4 pontos) e o menu *Samples →
 > B-Splines* os adiciona pelo mesmo caminho de uma B-Spline digitada.
 
+> **Estado no 1.7 (implementado).** As duas costuras do plano 2D→3D (§8) foram usadas exatamente como
+> previstas. (1) **Coordenada dimensão-agnóstica:** o **Ponto3D** da spec é o próprio `geometry.Point` com
+> 3 coordenadas — nenhum tipo renomeado. Ele ganhou `transformed(matriz)`; as 3 transformações básicas são
+> matrizes 4×4 de `transforms.py` (`translation(dx,dy,dz)`, `scaling(sx,sy,sz)` e as novas
+> `rotation_x/y/z`). **O mundo passou a ser 3D:** o controller eleva a entrada `(x, y)` para `(x, y, 0)`
+> (`Point.lifted`) e o `.obj` passou a manter o z, então todo objeto criado na GUI aceita transformações 3D;
+> o mundo 2D dos trabalhos anteriores vive no plano z = 0. Os passos de transformação (`Translate`/`Scale`/
+> `Rotate`) seguem a dimensão do objeto, então objetos planares ainda recebem as matrizes 3×3 do 1.2.
+> (2) **Projeção como estágio:** nasceu `domain/projection.py` (§4.7) com o algoritmo de **projeção paralela
+> ortogonal** visto em aula: `view_matrix` translada o VRP para a origem, `transforms.angles_to_z` determina
+> os ângulos do VPN com X e Y, rotações em X e Y alinham o VPN com Z — **ao final o VPN é (0, 0, 1)**, coberto
+> por teste — e uma rotação em Z alinha o VUP com Y (é o "−ângulo" da rotação de window do 1.3);
+> `parallel_orthogonal` é a matriz que zera z ("ignore todas as coordenadas Z").
+> `normalization.world_to_scn_matrix` compõe view → **PROJECT** → normalização (2/w, 2/h) numa única matriz
+> 4×4, agora construída **uma vez por frame** no pipeline (antes era refeita a cada ponto); `map_to_scn`
+> devolve o ponto SCN já em 2D, então clipping, viewport e GUI não mudaram, e todos os testes de SCN do 1.3
+> passam sem alteração. **Objeto3D:** `objects.Object3D` (`ObjectType.OBJECT3D`) guarda literalmente a lista
+> de segmentos (pares de pontos 3D), achatada em `coordinates` para o `transform` herdado mover tudo com uma
+> matriz; `center()` usa os vértices distintos (a média crua dos extremos pesaria cada canto pelo número de
+> arestas). Ele desenha pelo ramo de clipagem de retas, como um wireframe — nenhum ramo novo no pipeline.
+> **Rotação em torno de eixo arbitrário:** `transforms.rotation_about_axis(ponto, direção, θ)` leva o eixo à
+> origem, alinha com Z (a **mesma** `alignment_with_z` da projeção), roda θ em Z e desfaz; os eixos
+> principais são casos particulares. Validada contra a fórmula de Rodrigues. **Window 3D:** `window.py`
+> virou VRP, VPN, VUP, largura e altura. O VRP é o **centro** da window (a spec permite usar um ponto da window
+> como VRP; o centro faz toda rotação pivotar no meio da vista). O construtor por limites do 1.1–1.3 continua
+> valendo (window no plano z = 0 olhando para +z), por isso o mundo 2D aparece igual. Navegação: `pan` ao
+> longo dos eixos da própria window em 3D, `zoom`, e `rotate(Δ, eixo)` em torno dos eixos da window — roll
+> (VPN, a rotação do 1.3), pitch (vetor direita) e yaw (VUP) —, aplicando à window a própria rotação em eixo
+> arbitrário, como o 1.3 sugeria ("considere a window como um objeto gráfico qualquer"); VPN/VUP são
+> reortonormalizados a cada giro. **GUI:** diálogo de transformação 3D (dz/sz; eixo X/Y/Z/arbitrário passando
+> pelo pivô), tipo `object3d` no diálogo de objeto (pontos em pares, um segmento por par), combo de eixo +
+> *Reset view* na sidebar, órbita com arrasto do botão **esquerdo** (o do meio continua sendo pan) e leitura de
+> VRP/VPN na margem do canvas. **`.obj`:** elementos agrupados por `o`; um objeto de um só `p`/`l` mantém o
+> mapeamento do 1.3, um objeto com vários elementos ou com faces `f` (export do Blender) vira `Object3D` com
+> arestas deduplicadas; a exportação do `Object3D` escreve os vértices distintos e um `l i j` por segmento.
+> Samples em `samples/3d/` (eixos, cubo em faces, pirâmide, paralelepípedo, casa 3D — que vista de frente é a
+> casa 2D) no menu *Samples → 3D models*. **Correção:** B-Splines agora são de fato puladas na exportação,
+> como a decisão do 1.6 dizia (antes viravam um wireframe dos pontos de controle).
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
@@ -207,6 +246,7 @@ GraphicObject (abstrata)
        ├── Wireframe    (1.1)  polígono = lista de pontos ligados
        ├── Curve2D      (1.5)  amostra a curva de Bézier e devolve segmentos
        ├── BSpline      (1.6)  B-Spline uniforme por Forward Differences
+       ├── Object3D     (1.7)  modelo de arame: lista de segmentos (pares de pontos 3D)
        └── Surface      (1.9/1.10) malha de retalhos → segmentos
 ```
 - **`to_segments()` é a chave:** o renderer só sabe desenhar segmentos. Curva, superfície e objeto 3D
@@ -237,6 +277,9 @@ GraphicObject (abstrata)
 - **Não existe em 1.1** — o arquivo pode nem ser criado ainda. O que existe hoje é o **lugar dele no
   pipeline** (§5): um estágio opcional. Quando o 1.7 chegar, cria-se a classe e insere-se o estágio; nada
   antes dele muda.
+- **No 1.7:** criado com funções puras, não classes — `view_matrix(VRP, VPN, VUP)` e `parallel_orthogonal()`
+  —, pois só existe uma projeção. A escolha paralela/perspectiva (e a interface comum) entra no 1.8, que
+  troca a translação da view (COP em vez de VRP) e a matriz do passo PROJECT.
 
 ### 4.8 `clipping.py`
 - Clipagem de ponto, reta (2 técnicas selecionáveis: C-S / L-B / NLN), polígono, curva (1.5).
@@ -265,7 +308,10 @@ Uma **lista ordenada de estágios**, cada estágio uma função pura `list[Primi
 Pipeline 2D (1.1):        [ to_segments, normalize(≈id), viewport ]
 + clipping (1.4):         [ to_segments, normalize, CLIP, viewport ]
 + 3D (1.7/1.8):           [ to_segments, normalize, PROJECT, clip, viewport ]
+1.7 (implementado):       [ to_segments, view(VRP/VPN/VUP), PROJECT, normalize, clip, viewport ]
 ```
+No 1.7 o "normalize" se dividiu em view + normalização com o PROJECT no meio (a ordem do algoritmo da aula);
+como os três são lineares, viram uma só matriz por frame (`normalization.world_to_scn_matrix`).
 Trocar 2D→3D = **inserir `PROJECT`** e alimentar o pipeline com coords 3D. O código de cada estágio
 existente não muda. Este arquivo é o coração do "sim, a arquitetura suporta 3D".
 

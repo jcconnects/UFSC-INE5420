@@ -5,22 +5,26 @@ by *any* homogeneous matrix -- a minimal graphics engine, exactly as the spec
 frames it. It is fed by matrix *factories* (translation / scaling / rotation),
 one per transform, each returning a plain homogeneous matrix.
 
-Everything here is dimension-agnostic and pure. The 2D factories build 3x3
-matrices today; the 3D siblings (rotation about an arbitrary axis, 1.7) will be
-added alongside without touching `apply`. This is seam #1 of the 2D->3D plan.
+Everything here is dimension-agnostic and pure. `translation`/`scaling` size
+their matrix by the number of components (3x3 in 2D, 4x4 in 3D); the 3D
+rotations of trabalho 1.7 (`rotation_x/y/z`, `rotation_about_axis`) sit beside
+the 2D `rotation` without touching `apply`. This is seam #1 of the 2D->3D plan.
 
 Composition follows geometry.compose: `compose(A, B)` applies A then B
 (left-to-right). So a rotation about an arbitrary point p reads in the natural
 order -- translate p to the origin, rotate, translate back:
 
     compose(translation(-px, -py), rotation(theta), translation(px, py))
+
+All rotations follow the right-hand rule: a positive angle turns
+counter-clockwise when seen from the tip of the axis looking at the origin.
 """
 
 from __future__ import annotations
 
 import math
 
-from .geometry import Point, compose
+from .geometry import Point, Vector, compose, normalized
 from .objects import GraphicObject
 
 
@@ -70,8 +74,8 @@ def scaling(*factors: float) -> list[list[float]]:
 def rotation(angle_radians: float) -> list[list[float]]:
     """Homogeneous 2D rotation matrix about the origin (counter-clockwise).
 
-    Positive angle rotates counter-clockwise. 3D rotation (about an axis) is a
-    separate factory added in trabalho 1.7; this 2D form stays as is.
+    Positive angle rotates counter-clockwise. The 3D rotations (trabalho 1.7)
+    are the separate factories below; this 2D form stays as is.
     """
     cos = math.cos(angle_radians)
     sin = math.sin(angle_radians)
@@ -103,3 +107,95 @@ def rotation_about(center: Point, angle_radians: float) -> list[list[float]]:
     to_origin = translation(*(-component for component in center))
     back = translation(*center)
     return compose(to_origin, rotation(angle_radians), back)
+
+
+# --- 3D rotations (trabalho 1.7) --------------------------------------------
+
+
+def rotation_x(angle_radians: float) -> list[list[float]]:
+    """Homogeneous 3D rotation about the x axis (y turns toward z)."""
+    cos = math.cos(angle_radians)
+    sin = math.sin(angle_radians)
+    return [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, cos, -sin, 0.0],
+        [0.0, sin, cos, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def rotation_y(angle_radians: float) -> list[list[float]]:
+    """Homogeneous 3D rotation about the y axis (z turns toward x)."""
+    cos = math.cos(angle_radians)
+    sin = math.sin(angle_radians)
+    return [
+        [cos, 0.0, sin, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [-sin, 0.0, cos, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def rotation_z(angle_radians: float) -> list[list[float]]:
+    """Homogeneous 3D rotation about the z axis (x turns toward y).
+
+    The 3D form of the plane rotation: on z = 0 it matches `rotation`.
+    """
+    cos = math.cos(angle_radians)
+    sin = math.sin(angle_radians)
+    return [
+        [cos, -sin, 0.0, 0.0],
+        [sin, cos, 0.0, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
+def angles_to_z(direction: Vector) -> tuple[float, float]:
+    """The angles (about x, then about y) that turn `direction` onto +z.
+
+    The step of the course's projection algorithm "determine os ângulos do VPN
+    com X e Y": rotating about x by the first angle drops the y component (the
+    vector lands in the xz plane), then rotating about y by the second drops the
+    x component, leaving (0, 0, |direction|). atan2 keeps every case defined,
+    including a direction already along x (first angle 0) or along -z.
+    """
+    x, y, z = normalized(direction)
+    angle_x = math.atan2(y, z)
+    angle_y = -math.atan2(x, math.hypot(y, z))
+    return angle_x, angle_y
+
+
+def alignment_with_z(direction: Vector) -> list[list[float]]:
+    """Rotation about x then y that maps `direction` onto +z.
+
+    Shared by the parallel projection (it aligns the VPN with z, so the VPN
+    ends as (0, 0, 1)) and by `rotation_about_axis` (it aligns the axis).
+    """
+    angle_x, angle_y = angles_to_z(direction)
+    return compose(rotation_x(angle_x), rotation_y(angle_y))
+
+
+def rotation_about_axis(
+    point: Point, direction: Vector, angle_radians: float
+) -> list[list[float]]:
+    """3D rotation by `angle_radians` about an arbitrary axis.
+
+    The axis passes through `point` along `direction`. The course's algorithm:
+    move the axis to the origin, rotate about x and y until it lies on z, rotate
+    about z by the angle, undo the two alignment rotations (reverse order,
+    negated angles), and move back. A principal axis is just a special case --
+    direction (1, 0, 0) through the origin is `rotation_x`. A planar `point`
+    (x, y) is read as (x, y, 0).
+    """
+    point = point.lifted(3)
+    angle_x, angle_y = angles_to_z(direction)
+    return compose(
+        translation(*(-component for component in point)),
+        rotation_x(angle_x),
+        rotation_y(angle_y),
+        rotation_z(angle_radians),
+        rotation_y(-angle_y),
+        rotation_x(-angle_x),
+        translation(*point),
+    )
