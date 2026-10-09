@@ -1,7 +1,7 @@
 """Wavefront .obj read/write round-trip (trabalho 1.3)."""
 
 from domain.geometry import Point
-from domain.objects import Line, ObjectType, Point2D, Wireframe
+from domain.objects import BSpline, Curve2D, Line, ObjectType, Point2D, Wireframe
 from persistence.obj_descriptor import from_obj, to_obj
 
 
@@ -47,6 +47,14 @@ def test_roundtrip_preserves_geometry_and_types():
         ObjectType.WIREFRAME,
     ]
     assert [o.coordinates for o in restored] == [o.coordinates for o in world]
+
+
+def test_curves_are_skipped_on_export():
+    # Control points are not polyline geometry: writing them as `l` would load
+    # back as a wireframe, so both curve kinds are left out of the file.
+    controls = [Point(0, 0), Point(1, 1), Point(2, 0), Point(3, 1)]
+    text = to_obj([Curve2D("bezier", controls), BSpline("bspline", controls)])
+    assert text == "# SGI - INE5420 world export (Wavefront .obj)\n"
 
 
 def test_roundtrip_of_a_triangle_stays_closed_wireframe():
