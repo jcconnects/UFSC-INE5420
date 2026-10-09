@@ -3,10 +3,15 @@
 Holds the world state (display file + window) and runs the render pipeline. It
 touches no pixels and imports no Qt: the GUI hands it intent (add an object,
 pan, zoom) and receives neutral draw commands back.
+
+Since trabalho 1.7 the world is 3D: typed planar input `(x, y)` is lifted to
+`(x, y, 0)`, so every object the GUI builds can take 3D transforms, and the
+window navigates in space.
 """
 
 from __future__ import annotations
 
+import copy
 import math
 
 from domain import transforms
@@ -20,22 +25,28 @@ from domain.objects import (
     Curve2D,
     GraphicObject,
     Line,
+    Object3D,
     ObjectType,
     Point2D,
     Wireframe,
 )
 from domain.viewport import ViewportTransform
-from domain.window import Window
+from domain.window import Window, WindowAxis
 from persistence import obj_descriptor
 from persistence.parser import parse_coordinates
 
 from .render_pipeline import DrawCommand, render
+
+# The world's dimension since trabalho 1.7. Planar input lands on z = 0.
+WORLD_DIMENSION = 3
 
 
 class Controller:
     def __init__(self, window: Window | None = None) -> None:
         self.display_file = DisplayFile()
         self.window = window or Window(-100, -100, 100, 100)
+        # Snapshot of the starting view, restored by reset_window().
+        self._home_window = copy.deepcopy(self.window)
         # Trabalho 1.4: the user-selected line-clipping technique. The GUI's radio
         # button flips this; the render pipeline reads it each frame.
         self.line_clipper = LineClipper.COHEN_SUTHERLAND
@@ -48,8 +59,11 @@ class Controller:
         color: Color = BLACK,
         filled: bool = False,
     ) -> GraphicObject:
-        """Parse coordinates and add a new object of the requested type."""
-        points = parse_coordinates(raw_coordinates)
+        """Parse coordinates and add a new object of the requested type.
+
+        The world is 3D: `(x, y)` is read as `(x, y, 0)`, and `(x, y, z)` as is.
+        """
+        points = [point.lifted(WORLD_DIMENSION) for point in parse_coordinates(raw_coordinates)]
         obj = self._build(name, object_type, points, color, filled)
         self.display_file.add(obj)
         return obj
@@ -76,6 +90,8 @@ class Controller:
             return Curve2D(name, points, color)
         if object_type is ObjectType.BSPLINE:
             return BSpline(name, points, color)
+        if object_type is ObjectType.OBJECT3D:
+            return Object3D.from_points(name, points, color)
         raise ValueError(f"unknown object type: {object_type}")
 
     def set_line_clipper(self, clipper: LineClipper) -> None:
@@ -101,9 +117,21 @@ class Controller:
     def zoom(self, factor: float) -> None:
         self.window.zoom(factor)
 
-    def rotate_window(self, degrees: float) -> None:
-        """Rotate the window about its center. The scene counter-rotates."""
-        self.window.rotate(math.radians(degrees))
+    def rotate_window(self, degrees: float, axis: WindowAxis = WindowAxis.ROLL) -> None:
+        """Rotate the window about one of its own axes, through its center (VRP).
+
+        Roll (the default) is the 1.3 rotation about the VPN; pitch and yaw tilt
+        and turn the view plane in 3D. The scene turns the opposite way.
+        """
+        self.window.rotate(math.radians(degrees), axis)
+
+    def reset_window(self) -> None:
+        """Restore the starting view: position, size and orientation."""
+        self.window = copy.deepcopy(self._home_window)
+
+    def view_vectors(self) -> tuple[tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+        """The window's (VRP, VPN, VUP) in world coordinates, for display."""
+        return (self.window.vrp.coords, self.window.vpn, self.window.vup)
 
     def save_obj(self, path: str) -> None:
         """Write the whole world to a Wavefront .obj file."""

@@ -47,6 +47,11 @@ Abre a janela do SGI. A interface tem:
 | **Pan (mouse)** | Arrastar com o **botão do meio** do mouse sobre o canvas |
 | **Zoom (botões)** | *Zoom in* / *Zoom out* |
 | **Zoom (mouse)** | **Scroll** do mouse sobre o canvas |
+| **Orbitar (3D, 1.7)** | Arrastar com o **botão esquerdo** sobre o canvas: gira a window (yaw/pitch) em torno do VRP |
+| **Rotacionar a window (1.7)** | Sidebar *Window rotation*: eixo (*Roll* = VPN, *Pitch*, *Yaw*), ângulo, *Rotate window* / *Rotate opposite* |
+| **Reset view (1.7)** | Botão *Reset view*: volta VRP, VPN, VUP e zoom iniciais |
+| **Transformar objeto** | Selecione na lista → *Transform*: translação (dx, dy, dz), escala (sx, sy, sz) e rotação em torno do eixo X/Y/Z ou de um eixo arbitrário, passando pelo centro do objeto, pela origem ou por um ponto |
+| **Modelos 3D** | *Samples → 3D models* (eixos, cubo, pirâmide, paralelepípedo, casa 3D) |
 
 ### Formato das coordenadas
 
@@ -62,8 +67,12 @@ Padrão exigido pela spec, aceito no campo *Coordinates*:
   `(-10,-10),(10,-10),(10,10),(-10,10)`
 
 O parsing usa `list(eval(...))` (diretiva da spec), isolado em
-[`src/persistence/parser.py`](../src/persistence/parser.py). O formato já aceita a 3ª coordenada
-`(x, y, z)` prevista para o Trabalho 1.7 (3D).
+[`src/persistence/parser.py`](../src/persistence/parser.py).
+
+Desde o Trabalho 1.7 o mundo é 3D: todo tipo aceita `(x, y, z)`, e um `(x, y)` vale `(x, y, 0)`.
+
+- **object3d** (modelo de arame) → pontos em **pares**, um segmento por par:
+  `(0,0,0),(50,0,0),(0,0,0),(0,50,0),(0,0,0),(0,0,50)` (três arestas saindo da origem)
 
 ## Rodar os testes
 

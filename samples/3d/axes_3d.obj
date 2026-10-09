@@ -1,0 +1,17 @@
+# SGI - INE5420 3D sample: world axes (x red, y green, z blue)
+# Seen head-on the z axis is a single point; orbit to see it.
+o x_axis
+v -80 0 0
+v 80 0 0
+l 1 2
+o y_axis
+v 0 -80 0
+v 0 80 0
+l 3 4
+o z_axis
+v 0 0 -80
+v 0 0 80
+l 5 6
+o origin
+v 0 0 0
+p 7

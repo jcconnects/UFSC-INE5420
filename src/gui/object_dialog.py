@@ -5,7 +5,9 @@ no coordinate parsing itself (that lives in persistence.parser). Trabalho 1.2
 adds the colour picker: the chosen RGB colours the object's lines/borders.
 Trabalho 1.4 adds the "Filled" checkbox: the user decides at creation whether a
 polygon is drawn as a wireframe or filled. It only affects wireframes; points
-and lines have no interior to fill.
+and lines have no interior to fill. Trabalho 1.7 makes the world 3D: every type
+accepts `(x, y, z)` (a missing z is 0), and an object3d takes its points in
+pairs, one segment per pair.
 """
 
 from __future__ import annotations
@@ -35,7 +37,6 @@ class ObjectDialog(QDialog):
         for object_type in ObjectType:
             self.type_field.addItem(object_type.value, object_type)
         self.coordinates_field = QLineEdit()
-        self.coordinates_field.setPlaceholderText("(x1, y1),(x2, y2),...")
 
         self._color: Color = BLACK
         self.color_button = QPushButton()
@@ -79,8 +80,14 @@ class ObjectDialog(QDialog):
             self.coordinates_field.setPlaceholderText(
                 "(x1,y1),(x2,y2),(x3,y3),(x4,y4),... — 4 or more points"
             )
+        elif object_type is ObjectType.OBJECT3D:
+            # Trabalho 1.7: a wireframe model is a list of segments, typed as
+            # consecutive point pairs.
+            self.coordinates_field.setPlaceholderText(
+                "(x1,y1,z1),(x2,y2,z2),... — pairs: one segment per pair"
+            )
         else:
-            self.coordinates_field.setPlaceholderText("(x1, y1),(x2, y2),...")
+            self.coordinates_field.setPlaceholderText("(x1, y1, z1),(x2, y2, z2),... — z optional")
 
     def _sync_filled_enabled(self) -> None:
         is_wireframe = self.type_field.currentData() is ObjectType.WIREFRAME

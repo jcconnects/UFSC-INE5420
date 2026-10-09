@@ -44,7 +44,8 @@ def test_append_renames_on_name_collision(tmp_path):
 
 @pytest.mark.skipif(not _SAMPLES.is_dir(), reason="samples/ not present")
 def test_every_sample_loads_and_renders():
-    samples = sorted(_SAMPLES.glob("*.obj"))
+    # rglob: includes the 3D models under samples/3d (trabalho 1.7).
+    samples = sorted(_SAMPLES.rglob("*.obj"))
     assert samples, "expected shipped sample scenes"
     for path in samples:
         c = Controller()
@@ -52,3 +53,12 @@ def test_every_sample_loads_and_renders():
         assert objects, f"{path.name} produced no objects"
         # Renders to at least one draw command without raising.
         assert c.render(200, 200)
+
+
+@pytest.mark.skipif(not (_SAMPLES / "3d").is_dir(), reason="samples/3d not present")
+def test_3d_models_load_as_object3d_wireframes():
+    expected_edges = {"cube": 12, "pyramid": 8, "parallelepiped": 12}
+    for stem, edges in expected_edges.items():
+        objects = Controller().load_obj(str(_SAMPLES / "3d" / f"{stem}.obj"))
+        assert [o.type for o in objects] == [ObjectType.OBJECT3D], stem
+        assert len(objects[0].segments) == edges, stem

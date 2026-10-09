@@ -1,0 +1,12 @@
+# SGI - INE5420 3D sample: square pyramid, base 80x80 on y = -40, apex up (+y)
+o pyramid
+v -40 -40 -40
+v 40 -40 -40
+v 40 -40 40
+v -40 -40 40
+v 0 50 0
+l 1 2 3 4 1
+l 1 5
+l 2 5
+l 3 5
+l 4 5

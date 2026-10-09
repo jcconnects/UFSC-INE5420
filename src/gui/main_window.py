@@ -1,8 +1,9 @@
-"""The main window: viewport canvas, object list, and pan/zoom controls.
+"""The main window: viewport canvas, object list, and navigation controls.
 
 Assembles the GUI and wires user actions to the controller. Layout mirrors the
-Blender Top-Orthographic reference from the spec: pan, scroll-zoom, add object,
-and (trabalho 1.2) apply 2D transforms to the selected object.
+Blender references from the spec: pan, scroll-zoom, add object, (trabalho 1.2)
+transform the selected object, and (trabalho 1.7) navigate the window in 3D --
+rotate it about its own axes (roll/pitch/yaw) and reset the view.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
@@ -31,6 +33,7 @@ from app.controller import Controller
 from app.transform_request import build_matrix
 from domain.clipping import LineClipper
 from domain.objects import ObjectType
+from domain.window import WindowAxis
 
 from .curve_samples import BSPLINE_SAMPLES, CURVE_SAMPLES
 from .object_dialog import ObjectDialog
@@ -41,6 +44,14 @@ PAN_STEP = 10.0
 _NAME_ROLE = Qt.ItemDataRole.UserRole
 # Repo root: src/gui/main_window.py -> up 3 -> repo. samples/ ships beside src.
 _SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+# Trabalho 1.7: 3D wireframe models, in their own submenu.
+_SAMPLES_3D_DIR = _SAMPLES_DIR / "3d"
+# Window rotation axes as offered in the sidebar (the window's own axes).
+_WINDOW_AXIS_LABELS = {
+    WindowAxis.ROLL: "Roll (about VPN)",
+    WindowAxis.PITCH: "Pitch (about right)",
+    WindowAxis.YAW: "Yaw (about up)",
+}
 
 # Sample colouring lives here, not in the .obj files: the files stay 100%
 # standard geometry (the trabalho 1.3 decision), and the paint colour is applied
@@ -56,6 +67,12 @@ _SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
     "nested_stars": (148, 0, 211),   # violet
     "star_of_david": (33, 97, 140),  # deep blue
     "axes": (120, 120, 120),         # neutral grey
+    # 3D models (trabalho 1.7)
+    "axes_3d": (120, 120, 120),      # neutral grey
+    "cube": (64, 224, 208),          # turquoise
+    "pyramid": (255, 165, 0),        # orange
+    "parallelepiped": (186, 85, 211),  # orchid
+    "house_3d": (120, 72, 48),       # brown
 }
 _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # house
@@ -69,6 +86,7 @@ _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # axes
     "x_axis": (200, 60, 60),         # red x
     "y_axis": (60, 170, 90),         # green y
+    "z_axis": (70, 130, 230),        # blue z
     "origin": (240, 240, 240),       # light origin dot
 }
 # A collision-renamed object ("petal_1" -> "petal_1_2") should still match its
@@ -140,12 +158,17 @@ class MainWindow(QMainWindow):
         return container
 
     def _window_rotation_controls(self) -> QWidget:
-        # Window rotation is always about the window center, so a single angle
-        # field suffices (spec). Positive is counter-clockwise; the scene
-        # counter-rotates on screen.
+        # Window rotation is always about the window center (the VRP), so an
+        # angle field suffices (spec 1.3); trabalho 1.7 adds which of the
+        # window's own axes to turn about. Roll is the 1.3 rotation (positive is
+        # counter-clockwise); the scene turns the opposite way on screen.
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.addWidget(QLabel("Window rotation"))
+        self.rotation_axis_field = QComboBox()
+        for axis, label in _WINDOW_AXIS_LABELS.items():
+            self.rotation_axis_field.addItem(label, axis)
+        layout.addWidget(self.rotation_axis_field)
         self.rotation_field = QDoubleSpinBox()
         self.rotation_field.setRange(-360.0, 360.0)
         self.rotation_field.setDecimals(1)
@@ -159,6 +182,9 @@ class MainWindow(QMainWindow):
         rotate_cw.clicked.connect(lambda: self._rotate_window(-self.rotation_field.value()))
         layout.addWidget(rotate_ccw)
         layout.addWidget(rotate_cw)
+        reset = QPushButton("Reset view")
+        reset.clicked.connect(self._reset_window)
+        layout.addWidget(reset)
         return container
 
     def _clipping_controls(self) -> QWidget:
@@ -205,11 +231,25 @@ class MainWindow(QMainWindow):
             label = path.stem.replace("_", " ").title()
             action = samples_menu.addAction(label)
             action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
+        self._build_3d_samples_menu(samples_menu)
         self._build_curve_samples_menu(samples_menu)
         self._build_bspline_samples_menu(samples_menu)
         samples_menu.addSeparator()
         clear_action = samples_menu.addAction("Clear world")
         clear_action.triggered.connect(self._clear_world)
+
+    def _build_3d_samples_menu(self, samples_menu) -> None:
+        # 3D wireframe models (trabalho 1.7), shipped as .obj like the 2D
+        # scenes and appended the same way. Orbit (left-drag) to see the depth.
+        files = sorted(_SAMPLES_3D_DIR.glob("*.obj")) if _SAMPLES_3D_DIR.is_dir() else []
+        if not files:
+            return
+        samples_menu.addSeparator()
+        models_menu = samples_menu.addMenu("3D models")
+        for path in files:
+            label = path.stem.replace("_", " ").title()
+            action = models_menu.addAction(label)
+            action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
 
     def _build_curve_samples_menu(self, samples_menu) -> None:
         # Bézier curve demos (trabalho 1.5). They live in code, not .obj (the
@@ -276,7 +316,11 @@ class MainWindow(QMainWindow):
         self.viewport.update()
 
     def _rotate_window(self, degrees: float) -> None:
-        self.controller.rotate_window(degrees)
+        self.controller.rotate_window(degrees, self.rotation_axis_field.currentData())
+        self.viewport.update()
+
+    def _reset_window(self) -> None:
+        self.controller.reset_window()
         self.viewport.update()
 
     def _on_add_object(self) -> None:

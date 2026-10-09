@@ -3,12 +3,16 @@
 The pipeline is an ordered list of stages, not a monolithic render method. Each
 trabalho *inserts a stage* rather than rewriting existing ones:
 
-    1.1 (now):   [ to_segments, normalize(identity), viewport ]
+    1.1:         [ to_segments, normalize(identity), viewport ]
+    + 1.3:       [ to_segments, normalize(SCN), viewport ]
     + 1.4:       [ to_segments, normalize, CLIP, viewport ]
-    + 1.7/1.8:   [ to_segments, normalize, PROJECT, clip, viewport ]
+    + 1.7:       [ to_segments, view, PROJECT, normalize, clip, viewport ]
 
-Going from 2D to 3D is literally "insert the PROJECT stage" -- seam #2 of the
-2D->3D plan. Nothing else in the pipeline changes.
+Going from 2D to 3D was literally "insert the PROJECT stage" -- seam #2 of the
+2D->3D plan. In 1.7 the normalize stage became view (VRP/VPN/VUP) + PROJECT
+(parallel orthogonal) + normalize, composed into one world -> SCN matrix per
+frame (domain.normalization); clipping, the viewport and the GUI's drawing did
+not change.
 
 The output is a list of neutral draw commands (DrawPoint / DrawLine). The GUI
 executes those with drawPoint/drawLine only; it never learns the dimension of
@@ -22,10 +26,12 @@ from dataclasses import dataclass, field
 from domain import clipping
 from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
-from domain.normalization import to_scn
+from domain.normalization import map_to_scn, world_to_scn_matrix
 from domain.objects import BLACK, Color, GraphicObject, ObjectType
 from domain.viewport import ViewportTransform
 from domain.window import Window
+
+Matrix = list[list[float]]
 
 
 @dataclass(frozen=True)
@@ -72,45 +78,49 @@ def render(
 
     Stages, in order:
       1. to_segments  -- each object decomposes itself into world segments.
-      2. normalize    -- map each endpoint world -> SCN (bakes in window
-                         position/orientation; trabalho 1.3). SCN is computed
-                         per frame here, so window rotation never mutates the
-                         objects' world coordinates.
+      2. view + PROJECT + normalize
+                      -- map each endpoint world -> SCN: undo the window's 3D
+                         placement (VRP/VPN/VUP), project in parallel
+                         orthogonally onto the view plane (trabalho 1.7), and
+                         scale to [-1, 1] (trabalho 1.3). One matrix, built once
+                         per frame, so navigating never mutates world coordinates.
       3. CLIP         -- trim to the normalized [-1, 1] window (trabalho 1.4).
                          Points, lines and polygons each use their own technique;
                          line clipping honours the selected method.
       4. viewport     -- map each *surviving* SCN vertex to pixels.
-      (project enters between normalize and clip in trabalho 1.7.)
 
     Clipping runs in SCN space, before the viewport, so the viewport transform is
-    applied only to what the clip left behind -- the spec's requirement.
+    applied only to what the clip left behind -- the spec's requirement. 3D
+    objects need no branch of their own: an Object3D is just segments, so it
+    takes the line-clipping path like a wireframe.
     """
+    scn = world_to_scn_matrix(window)
     commands: list[DrawCommand] = []
     for obj in display_file:
         if obj.type is ObjectType.POINT:
-            _clip_point_object(obj, window, viewport, commands)
+            _clip_point_object(obj, scn, viewport, commands)
         elif obj.type in (ObjectType.CURVE, ObjectType.BSPLINE):
-            _clip_curve_object(obj, window, viewport, commands)
+            _clip_curve_object(obj, scn, viewport, commands)
         elif obj.filled and obj.type is ObjectType.WIREFRAME:
-            _clip_filled_polygon(obj, window, viewport, commands)
+            _clip_filled_polygon(obj, scn, viewport, commands)
         else:
-            _clip_line_object(obj, window, viewport, line_clipper, commands)
+            _clip_line_object(obj, scn, viewport, line_clipper, commands)
     return commands
 
 
 def _clip_point_object(
-    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+    obj: GraphicObject, scn: Matrix, viewport: ViewportTransform, out: list[DrawCommand]
 ) -> None:
     """Point clipping: keep the point only if it survives the clip window."""
-    scn = to_scn(obj.coordinates[0], window)
-    if clipping.clip_point(scn) is None:
+    position = map_to_scn(scn, obj.coordinates[0])
+    if clipping.clip_point(position) is None:
         return
-    px, py = viewport.apply(scn)
+    px, py = viewport.apply(position)
     out.append(DrawPoint(px, py, obj.color))
 
 
 def _clip_curve_object(
-    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+    obj: GraphicObject, scn: Matrix, viewport: ViewportTransform, out: list[DrawCommand]
 ) -> None:
     """Curve clipping by the method from the slides (5.6): point-clip the
     generated points. Shared by Bézier curves (1.5) and B-Splines (1.6) -- both
@@ -123,7 +133,7 @@ def _clip_curve_object(
     is the incremental point clipping the slides describe, not segment clipping
     against the border.
     """
-    scn_points = [to_scn(point, window) for point in obj.generated_points()]
+    scn_points = [map_to_scn(scn, point) for point in obj.generated_points()]
     inside = [clipping.clip_point(p) is not None for p in scn_points]
     for i in range(len(scn_points) - 1):
         if not (inside[i] and inside[i + 1]):
@@ -135,15 +145,15 @@ def _clip_curve_object(
 
 def _clip_line_object(
     obj: GraphicObject,
-    window: Window,
+    scn: Matrix,
     viewport: ViewportTransform,
     line_clipper: LineClipper,
     out: list[DrawCommand],
 ) -> None:
     """Line clipping for each of an object's segments with the chosen technique."""
     for start, end in obj.to_segments():
-        scn_start = to_scn(start, window)
-        scn_end = to_scn(end, window)
+        scn_start = map_to_scn(scn, start)
+        scn_end = map_to_scn(scn, end)
         clipped = clipping.clip_line(scn_start, scn_end, line_clipper)
         if clipped is None:
             continue
@@ -156,10 +166,10 @@ def _clip_line_object(
 
 
 def _clip_filled_polygon(
-    obj: GraphicObject, window: Window, viewport: ViewportTransform, out: list[DrawCommand]
+    obj: GraphicObject, scn: Matrix, viewport: ViewportTransform, out: list[DrawCommand]
 ) -> None:
     """Polygon clipping (Sutherland-Hodgman) for a filled wireframe."""
-    scn_vertices = [to_scn(point, window) for point in obj.coordinates]
+    scn_vertices = [map_to_scn(scn, point) for point in obj.coordinates]
     clipped = clipping.sutherland_hodgman(scn_vertices)
     if len(clipped) < 3:  # nothing (or a degenerate sliver) left to fill
         return

@@ -1,0 +1,17 @@
+# SGI - INE5420 3D sample: parallelepiped 96 x 32 x 32 centered at the origin
+# The 12 x 4 x 4 box of the SymPy projection exercise, scaled by 8.
+o parallelepiped
+v -48 -16 -16
+v 48 -16 -16
+v 48 16 -16
+v -48 16 -16
+v -48 -16 16
+v 48 -16 16
+v 48 16 16
+v -48 16 16
+l 1 2 3 4 1
+l 5 6 7 8 5
+l 1 5
+l 2 6
+l 3 7
+l 4 8

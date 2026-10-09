@@ -1,7 +1,8 @@
 """Graphic objects stored in the display file.
 
 The hierarchy the spec implies: Point / Line / Wireframe. It only grows in
-later trabalhos (Curve2D in 1.5/1.6, Surface in 1.9/1.10).
+later trabalhos (Curve2D in 1.5, BSpline in 1.6, Object3D in 1.7, Surface in
+1.9/1.10).
 
 Every object implements `to_segments()`, which decomposes it into line
 segments. This is the guarantee that keeps the renderer trivial forever: the
@@ -19,7 +20,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 
 from . import bspline, curves
-from .geometry import Point, transform_point
+from .geometry import Point, centroid
 
 
 class ObjectType(Enum):
@@ -28,6 +29,7 @@ class ObjectType(Enum):
     WIREFRAME = "wireframe"
     CURVE = "curve"
     BSPLINE = "bspline"
+    OBJECT3D = "object3d"
 
 
 Segment = tuple[Point, Point]
@@ -67,22 +69,21 @@ class GraphicObject(ABC):
         """Decompose the object into line segments for drawing."""
         ...
 
+    @property
+    def dimension(self) -> int:
+        """Spatial dimension of the vertices (3 for everything the GUI builds)."""
+        return self.coordinates[0].dimension
+
     def center(self) -> Point:
         """Geometric center (centroid) of the object's vertices.
 
         Used from trabalho 1.2 on for scaling/rotation about the object center.
         """
-        count = len(self.coordinates)
-        dimension = self.coordinates[0].dimension
-        sums = [0.0] * dimension
-        for point in self.coordinates:
-            for axis in range(dimension):
-                sums[axis] += point[axis]
-        return Point(*(component / count for component in sums))
+        return centroid(self.coordinates)
 
     def transform(self, matrix) -> None:
         """Apply a homogeneous matrix in place to every vertex."""
-        self.coordinates = [transform_point(matrix, point) for point in self.coordinates]
+        self.coordinates = [point.transformed(matrix) for point in self.coordinates]
 
 
 class Point2D(GraphicObject):  # noqa: N801 - domain name, not a dimension claim
@@ -223,3 +224,68 @@ class BSpline(GraphicObject):
     def to_segments(self) -> list[Segment]:
         points = self.generated_points()
         return [(points[i], points[i + 1]) for i in range(len(points) - 1)]
+
+
+class Object3D(GraphicObject):
+    """A 3D wireframe model (trabalho 1.7): a list of segments of 3D points.
+
+    The spec's Objeto3D: it "possui uma lista de segmentos de reta constituídos
+    por um par de Pontos3D". The segments are kept literally, as pairs of 3D
+    Points; `coordinates` holds them flattened (start, end, start, end, ...) so
+    the inherited `transform` moves every endpoint with one matrix -- the three
+    basic transforms and the rotation about an arbitrary axis are all just
+    matrices from domain.transforms. A vertex shared by several segments is
+    stored once per segment and moves identically in each.
+
+    It draws (and clips) through `to_segments()` like every other object, so the
+    pipeline projects it to the view plane and the GUI still only draws lines.
+    """
+
+    def __init__(self, name: str, segments: list[Segment], color: Color = BLACK) -> None:
+        if not segments:
+            raise ValueError("a 3D object needs at least one segment")
+        endpoints = [point for segment in segments for point in segment]
+        if any(point.dimension != 3 for point in endpoints):
+            raise ValueError("a 3D object needs 3D points (x, y, z)")
+        super().__init__(name, endpoints, color)
+
+    @classmethod
+    def from_points(cls, name: str, points: list[Point], color: Color = BLACK) -> Object3D:
+        """Build from a flat point list read in consecutive pairs.
+
+        The typed input `(x1,y1,z1),(x2,y2,z2),(x3,y3,z3),(x4,y4,z4)` is the two
+        segments P1-P2 and P3-P4, so the count must be even.
+        """
+        if len(points) % 2:
+            raise ValueError(
+                "a 3D object takes its points in pairs, one segment per pair "
+                f"(got {len(points)} points)"
+            )
+        return cls(name, list(zip(points[0::2], points[1::2])), color)
+
+    @property
+    def type(self) -> ObjectType:
+        return ObjectType.OBJECT3D
+
+    @property
+    def segments(self) -> list[Segment]:
+        points = self.coordinates
+        return [(points[i], points[i + 1]) for i in range(0, len(points), 2)]
+
+    def to_segments(self) -> list[Segment]:
+        return self.segments
+
+    def vertices(self) -> list[Point]:
+        """Distinct vertices, in first-seen order (shared endpoints counted once)."""
+        unique: dict[tuple[float, ...], Point] = {}
+        for point in self.coordinates:
+            unique.setdefault(point.coords, point)
+        return list(unique.values())
+
+    def center(self) -> Point:
+        """Centroid of the distinct vertices.
+
+        Averaging the raw endpoints would weight each corner by how many
+        segments meet there, pulling the "object center" pivot off-center.
+        """
+        return centroid(self.vertices())
