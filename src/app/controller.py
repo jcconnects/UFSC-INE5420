@@ -6,7 +6,9 @@ pan, zoom) and receives neutral draw commands back.
 
 Since trabalho 1.7 the world is 3D: typed planar input `(x, y)` is lifted to
 `(x, y, 0)`, so every object the GUI builds can take 3D transforms, and the
-window navigates in space.
+window navigates in space. Trabalho 1.8 adds the choice of projection: the
+parallel orthogonal one of 1.7 (the default) or a perspective from a center of
+projection the user can move.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from domain.objects import (
     Point2D,
     Wireframe,
 )
+from domain.projection import ParallelProjection, Projection
 from domain.viewport import ViewportTransform
 from domain.window import Window, WindowAxis
 from persistence import obj_descriptor
@@ -50,6 +53,10 @@ class Controller:
         # Trabalho 1.4: the user-selected line-clipping technique. The GUI's radio
         # button flips this; the render pipeline reads it each frame.
         self.line_clipper = LineClipper.COHEN_SUTHERLAND
+        # Trabalho 1.8: how the 3D world reaches the view plane -- parallel
+        # orthogonal (1.7) or perspective. The GUI swaps it; the pipeline reads
+        # it each frame.
+        self.projection: Projection = ParallelProjection()
 
     def add_object(
         self,
@@ -97,6 +104,31 @@ class Controller:
     def set_line_clipper(self, clipper: LineClipper) -> None:
         """Choose which line-clipping technique the pipeline uses."""
         self.line_clipper = clipper
+
+    def set_projection(self, projection: Projection) -> None:
+        """Choose the projection the pipeline runs: parallel or perspective.
+
+        A perspective carries its COP distance d, so moving the center of
+        projection is setting a new PerspectiveProjection.
+        """
+        self.projection = projection
+
+    def center_of_projection(self) -> Point | None:
+        """The COP in world coordinates, or None for the parallel projection.
+
+        The COP is virtual -- never drawn -- and rides with the window: d behind
+        its center, on the viewer's side.
+        """
+        return self.projection.center_of_projection(self.window)
+
+    def field_of_view(self) -> float | None:
+        """Horizontal field of view in degrees, or None for the parallel projection.
+
+        Wide for a short COP distance (wide-angle), narrow for a long one
+        (telephoto); zooming the window changes it too.
+        """
+        angle = self.projection.field_of_view(self.window)
+        return None if angle is None else math.degrees(angle)
 
     def transform_object(self, name: str, matrix) -> GraphicObject:
         """Apply a homogeneous matrix to a named object via the generic engine.
@@ -174,7 +206,9 @@ class Controller:
         self, viewport_width: float, viewport_height: float, margin: float = 0.0
     ) -> list[DrawCommand]:
         viewport = ViewportTransform(viewport_width, viewport_height, margin)
-        return render(self.display_file, self.window, viewport, self.line_clipper)
+        return render(
+            self.display_file, self.window, viewport, self.line_clipper, self.projection
+        )
 
     def pan_world_per_pixel(
         self, viewport_width: float, viewport_height: float, margin: float = 0.0
