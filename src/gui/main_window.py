@@ -44,7 +44,7 @@ from domain.window import WindowAxis
 from .curve_samples import BSPLINE_SAMPLES, CURVE_SAMPLES
 from .object_dialog import ObjectDialog
 from .transform_dialog import TransformDialog
-from .viewport_widget import ViewportWidget
+from .viewport_widget import DEFAULT_PAINT, ViewportWidget
 
 PAN_STEP = 10.0
 _NAME_ROLE = Qt.ItemDataRole.UserRole
@@ -396,7 +396,7 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, IndexError) as error:
             QMessageBox.warning(self, "Sample failed", str(error))
             return
-        default = _SAMPLE_DEFAULT.get(path.stem, (0, 0, 0))
+        default = _SAMPLE_DEFAULT.get(path.stem, DEFAULT_PAINT)
         for obj in objects:
             obj.color = _color_for(obj.name, default)
         self._refresh_object_list()
@@ -471,10 +471,12 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self.controller.load_obj(path)
+            objects = self.controller.load_obj(path)
         except (OSError, ValueError, IndexError) as error:
             QMessageBox.warning(self, "Import failed", str(error))
             return
+        for obj in objects:
+            obj.color = DEFAULT_PAINT
         self._refresh_object_list()
         self.viewport.update()
 

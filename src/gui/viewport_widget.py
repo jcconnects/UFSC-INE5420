@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import QWidget
 
 from app.controller import Controller
 from app.render_pipeline import DrawLine, DrawPoint, DrawPolygon
+from domain.objects import Color
 from domain.window import WindowAxis
 
 ZOOM_IN_FACTOR = 0.9
@@ -43,6 +44,10 @@ ORBIT_DEGREES_PER_PIXEL = 0.5
 # Pixel inset of the subcanvas (red border) from each widget edge.
 SUBCANVAS_MARGIN = 20.0
 _CANVAS_COLOR = QColor(0, 0, 0)
+# Paint for objects that arrive without a colour of their own: a .obj import
+# (the file carries none) or a new object whose colour was not picked. The
+# domain default is black, which would vanish on the black canvas.
+DEFAULT_PAINT: Color = (255, 255, 255)
 _SUBCANVAS_COLOR = QColor(220, 60, 60)
 _LABEL_COLOR = QColor(255, 255, 255)
 
