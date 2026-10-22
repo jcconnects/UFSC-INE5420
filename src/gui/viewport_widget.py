@@ -13,7 +13,9 @@ Mouse navigation (trabalho 1.7 adds the orbit, like Blender's view drag):
     left-drag    orbit: yaw/pitch the window about its center (VRP), so the
                  scene turns as if grabbed
     wheel        zoom
-The current VRP/VPN is printed in the top margin as the view moves.
+The current VRP/VPN is printed in the top margin as the view moves, and the
+projection in use (trabalho 1.8: the COP and field of view of a perspective)
+in the bottom margin.
 
 Subcanvas: the drawable widget is larger than the *subcanvas* -- the red-bordered
 inner rectangle the normalized window maps into. Geometry outside the window
@@ -96,6 +98,15 @@ class ViewportWidget(QWidget):
         vrp, vpn, _ = self.controller.view_vectors()
         readout = f"VRP {_triple(vrp, 0)}   VPN {_triple(vpn, 2)}"
         painter.drawText(int(x1) - metrics.horizontalAdvance(readout), int(y0) - 6, readout)
+        # How the scene is projected, left-aligned in the bottom margin.
+        painter.drawText(int(x0), int(y1) + metrics.ascent() + 2, self._projection_readout())
+
+    def _projection_readout(self) -> str:
+        cop = self.controller.center_of_projection()
+        if cop is None:
+            return "Parallel orthogonal projection"
+        fov = self.controller.field_of_view()
+        return f"Perspective   COP {_triple(cop.coords, 0)}   FOV {fov:.0f}°"
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt override
         factor = ZOOM_IN_FACTOR if event.angleDelta().y() > 0 else ZOOM_OUT_FACTOR

@@ -2,17 +2,21 @@
 
 Assembles the GUI and wires user actions to the controller. Layout mirrors the
 Blender references from the spec: pan, scroll-zoom, add object, (trabalho 1.2)
-transform the selected object, and (trabalho 1.7) navigate the window in 3D --
-rotate it about its own axes (roll/pitch/yaw) and reset the view.
+transform the selected object, (trabalho 1.7) navigate the window in 3D --
+rotate it about its own axes (roll/pitch/yaw) and reset the view -- and
+(trabalho 1.8) pick the projection, moving the perspective's center of
+projection from wide-angle to telephoto.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QAbstractSpinBox,
     QButtonGroup,
     QComboBox,
     QDoubleSpinBox,
@@ -25,6 +29,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +38,7 @@ from app.controller import Controller
 from app.transform_request import build_matrix
 from domain.clipping import LineClipper
 from domain.objects import ObjectType
+from domain.projection import ParallelProjection, PerspectiveProjection
 from domain.window import WindowAxis
 
 from .curve_samples import BSPLINE_SAMPLES, CURVE_SAMPLES
@@ -52,6 +58,14 @@ _WINDOW_AXIS_LABELS = {
     WindowAxis.PITCH: "Pitch (about right)",
     WindowAxis.YAW: "Yaw (about up)",
 }
+# Trabalho 1.8: range of the COP distance d, in world units. The slider is
+# logarithmic so the wide-angle end (short d) gets as much travel as the
+# telephoto end. The default d equals the default window's width: a ~53 degree
+# field of view, a "normal" lens.
+_COP_DISTANCE_MIN = 25.0
+_COP_DISTANCE_MAX = 5000.0
+_COP_DISTANCE_DEFAULT = 200.0
+_COP_SLIDER_STEPS = 1000
 
 # Sample colouring lives here, not in the .obj files: the files stay 100%
 # standard geometry (the trabalho 1.3 decision), and the paint colour is applied
@@ -73,6 +87,8 @@ _SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
     "pyramid": (255, 165, 0),        # orange
     "parallelepiped": (186, 85, 211),  # orchid
     "house_3d": (120, 72, 48),       # brown
+    # perspective scene (trabalho 1.8)
+    "street": (100, 149, 237),       # cornflower-blue buildings
 }
 _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # house
@@ -88,6 +104,9 @@ _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     "y_axis": (60, 170, 90),         # green y
     "z_axis": (70, 130, 230),        # blue z
     "origin": (240, 240, 240),       # light origin dot
+    # street
+    "curbs": (160, 160, 160),        # grey curbs
+    "lane": (255, 215, 0),           # gold lane marks
 }
 # A collision-renamed object ("petal_1" -> "petal_1_2") should still match its
 # original palette entry. This strips exactly one trailing "_<digits>".
@@ -106,6 +125,18 @@ def _color_for(name: str, default: tuple[int, int, int]) -> tuple[int, int, int]
     if base in _OBJECT_COLORS:
         return _OBJECT_COLORS[base]
     return default
+
+
+def _slider_to_cop_distance(position: int) -> float:
+    """COP distance for a slider position, logarithmic between the range ends."""
+    ratio = _COP_DISTANCE_MAX / _COP_DISTANCE_MIN
+    return _COP_DISTANCE_MIN * ratio ** (position / _COP_SLIDER_STEPS)
+
+
+def _cop_distance_to_slider(distance: float) -> int:
+    """Slider position for a COP distance (inverse of _slider_to_cop_distance)."""
+    ratio = _COP_DISTANCE_MAX / _COP_DISTANCE_MIN
+    return round(_COP_SLIDER_STEPS * math.log(distance / _COP_DISTANCE_MIN) / math.log(ratio))
 
 
 class MainWindow(QMainWindow):
@@ -128,6 +159,7 @@ class MainWindow(QMainWindow):
         sidebar.addWidget(transform_button)
         sidebar.addWidget(self._pan_zoom_controls())
         sidebar.addWidget(self._window_rotation_controls())
+        sidebar.addWidget(self._projection_controls())
         sidebar.addWidget(self._clipping_controls())
         sidebar_widget = QWidget()
         sidebar_widget.setLayout(sidebar)
@@ -186,6 +218,74 @@ class MainWindow(QMainWindow):
         reset.clicked.connect(self._reset_window)
         layout.addWidget(reset)
         return container
+
+    def _projection_controls(self) -> QWidget:
+        # Parallel orthogonal (1.7) or perspective (1.8). In perspective the COP
+        # sits d behind the window: a short d works as a wide-angle lens
+        # (strong convergence), a long d as a telephoto (flattened depth,
+        # approaching the parallel view). The slider and the field both set d.
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(QLabel("Projection"))
+        self._projection_group = QButtonGroup(container)
+        self._parallel_button = QRadioButton("Parallel orthogonal")
+        self._perspective_button = QRadioButton("Perspective")
+        for button in (self._parallel_button, self._perspective_button):
+            self._projection_group.addButton(button)
+            layout.addWidget(button)
+        layout.addWidget(QLabel("COP distance d"))
+        self._cop_slider = QSlider(Qt.Orientation.Horizontal)
+        self._cop_slider.setRange(0, _COP_SLIDER_STEPS)
+        layout.addWidget(self._cop_slider)
+        lens_labels = QHBoxLayout()
+        lens_labels.addWidget(QLabel("wide-angle"))
+        lens_labels.addStretch()
+        lens_labels.addWidget(QLabel("telephoto"))
+        layout.addLayout(lens_labels)
+        self._cop_field = QDoubleSpinBox()
+        self._cop_field.setRange(_COP_DISTANCE_MIN, _COP_DISTANCE_MAX)
+        self._cop_field.setDecimals(1)
+        self._cop_field.setStepType(QAbstractSpinBox.StepType.AdaptiveDecimalStepType)
+        layout.addWidget(self._cop_field)
+
+        # Start from the controller's projection, like the clipping radio does.
+        current = self.controller.projection
+        perspective = isinstance(current, PerspectiveProjection)
+        distance = current.cop_distance if perspective else _COP_DISTANCE_DEFAULT
+        self._perspective_button.setChecked(perspective)
+        self._parallel_button.setChecked(not perspective)
+        self._cop_field.setValue(distance)
+        self._cop_slider.setValue(_cop_distance_to_slider(distance))
+        self._cop_slider.setEnabled(perspective)
+        self._cop_field.setEnabled(perspective)
+
+        self._perspective_button.toggled.connect(self._apply_projection)
+        self._cop_slider.valueChanged.connect(self._on_cop_slider_moved)
+        self._cop_field.valueChanged.connect(self._on_cop_distance_typed)
+        return container
+
+    def _apply_projection(self) -> None:
+        perspective = self._perspective_button.isChecked()
+        self._cop_slider.setEnabled(perspective)
+        self._cop_field.setEnabled(perspective)
+        if perspective:
+            self.controller.set_projection(PerspectiveProjection(self._cop_field.value()))
+        else:
+            self.controller.set_projection(ParallelProjection())
+        self.viewport.update()
+
+    def _on_cop_slider_moved(self, position: int) -> None:
+        # Mirror the slider into the field without the field echoing back.
+        self._cop_field.blockSignals(True)
+        self._cop_field.setValue(_slider_to_cop_distance(position))
+        self._cop_field.blockSignals(False)
+        self._apply_projection()
+
+    def _on_cop_distance_typed(self, distance: float) -> None:
+        self._cop_slider.blockSignals(True)
+        self._cop_slider.setValue(_cop_distance_to_slider(distance))
+        self._cop_slider.blockSignals(False)
+        self._apply_projection()
 
     def _clipping_controls(self) -> QWidget:
         # Radio button to swap the line-clipping technique (spec 1.4). Polygon
