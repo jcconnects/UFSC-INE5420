@@ -51,7 +51,26 @@ Abre a janela do SGI. A interface tem:
 | **Rotacionar a window (1.7)** | Sidebar *Window rotation*: eixo (*Roll* = VPN, *Pitch*, *Yaw*), ângulo, *Rotate window* / *Rotate opposite* |
 | **Reset view (1.7)** | Botão *Reset view*: volta VRP, VPN, VUP e zoom iniciais |
 | **Transformar objeto** | Selecione na lista → *Transform*: translação (dx, dy, dz), escala (sx, sy, sz) e rotação em torno do eixo X/Y/Z ou de um eixo arbitrário, passando pelo centro do objeto, pela origem ou por um ponto |
-| **Modelos 3D** | *Samples → 3D models* (eixos, cubo, pirâmide, paralelepípedo, casa 3D) |
+| **Modelos 3D** | *Samples → 3D models* (eixos, cubo, pirâmide, paralelepípedo, casa 3D, rua) |
+| **Projeção (1.8)** | Sidebar *Projection*: *Parallel orthogonal* (a do 1.7, padrão) ou *Perspective* |
+| **Centro de projeção (1.8)** | Slider ou campo *COP distance d* (só em perspectiva): d curto = grande angular, d longo = teleobjetiva. O COP e o campo de visão aparecem na margem inferior do canvas |
+
+### Perspectiva (Trabalho 1.8)
+
+O centro de projeção (COP) é virtual: fica atrás da window, na normal que passa pelo centro dela, a uma
+distância `d` do lado do observador (`COP = VRP + d·VPN`), e acompanha a window na navegação. O que está no
+plano da window aparece igual nas duas projeções; o que está além encolhe e o que está entre a window e o COP
+cresce. O clipping continua 2D, contra a window, depois da projeção.
+
+Roteiro rápido:
+
+1. *Samples → 3D models → Street* (rua com prédios, meio-fio e faixas recuando em −z) — de frente, na
+   paralela, a profundidade some.
+2. *Projection → Perspective*: as arestas ao longo de z convergem para o ponto de fuga no centro.
+3. Arraste o slider *COP distance d*: para a esquerda (*wide-angle*, d curto) a convergência fica forte; para
+   a direita (*telephoto*, d longo) a profundidade achata e a imagem tende à paralela.
+4. *File → Import .obj...* com `samples/3d/parallelepiped.obj` (ou *Samples → 3D models → Parallelepiped*)
+   carrega o paralelepípedo de um arquivo; orbite com o botão esquerdo para vê-lo em perspectiva.
 
 ### Formato das coordenadas
 
