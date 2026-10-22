@@ -24,7 +24,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
 )
 
-from domain.objects import BLACK, Color, ObjectType
+from domain.objects import Color, ObjectType
+
+from .viewport_widget import DEFAULT_PAINT
 
 
 class ObjectDialog(QDialog):
@@ -38,7 +40,7 @@ class ObjectDialog(QDialog):
             self.type_field.addItem(object_type.value, object_type)
         self.coordinates_field = QLineEdit()
 
-        self._color: Color = BLACK
+        self._color: Color = DEFAULT_PAINT
         self.color_button = QPushButton()
         self.color_button.clicked.connect(self._pick_color)
         self._refresh_color_button()

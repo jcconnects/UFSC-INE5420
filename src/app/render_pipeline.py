@@ -7,12 +7,15 @@ trabalho *inserts a stage* rather than rewriting existing ones:
     + 1.3:       [ to_segments, normalize(SCN), viewport ]
     + 1.4:       [ to_segments, normalize, CLIP, viewport ]
     + 1.7:       [ to_segments, view, PROJECT, normalize, clip, viewport ]
+    + 1.8:       same stages; PROJECT is parallel or perspective
 
 Going from 2D to 3D was literally "insert the PROJECT stage" -- seam #2 of the
 2D->3D plan. In 1.7 the normalize stage became view (VRP/VPN/VUP) + PROJECT
 (parallel orthogonal) + normalize, composed into one world -> SCN matrix per
 frame (domain.normalization); clipping, the viewport and the GUI's drawing did
-not change.
+not change. In 1.8 the PROJECT stage takes the user's projection: the
+perspective moves the COP (not the VRP) to the origin and divides by W, and
+the mapping cuts away what lies behind the COP. Clipping stays 2D.
 
 The output is a list of neutral draw commands (DrawPoint / DrawLine). The GUI
 executes those with drawPoint/drawLine only; it never learns the dimension of
@@ -26,8 +29,14 @@ from dataclasses import dataclass, field
 from domain import clipping
 from domain.clipping import LineClipper
 from domain.display_file import DisplayFile
-from domain.normalization import map_to_scn, world_to_scn_matrix
+from domain.normalization import (
+    map_polygon_to_scn,
+    map_segment_to_scn,
+    map_to_scn,
+    world_to_scn_matrix,
+)
 from domain.objects import BLACK, Color, GraphicObject, ObjectType
+from domain.projection import ParallelProjection, Projection
 from domain.viewport import ViewportTransform
 from domain.window import Window
 
@@ -73,6 +82,7 @@ def render(
     window: Window,
     viewport: ViewportTransform,
     line_clipper: LineClipper = LineClipper.COHEN_SUTHERLAND,
+    projection: Projection = ParallelProjection(),
 ) -> list[DrawCommand]:
     """Run the pipeline and produce neutral draw commands.
 
@@ -80,13 +90,17 @@ def render(
       1. to_segments  -- each object decomposes itself into world segments.
       2. view + PROJECT + normalize
                       -- map each endpoint world -> SCN: undo the window's 3D
-                         placement (VRP/VPN/VUP), project in parallel
-                         orthogonally onto the view plane (trabalho 1.7), and
-                         scale to [-1, 1] (trabalho 1.3). One matrix, built once
-                         per frame, so navigating never mutates world coordinates.
-      3. CLIP         -- trim to the normalized [-1, 1] window (trabalho 1.4).
-                         Points, lines and polygons each use their own technique;
-                         line clipping honours the selected method.
+                         placement (VRP/VPN/VUP), project onto the view plane --
+                         parallel orthogonally (trabalho 1.7) or in perspective
+                         from the COP (trabalho 1.8) -- and scale to [-1, 1]
+                         (trabalho 1.3). One matrix, built once per frame, so
+                         navigating never mutates world coordinates. In
+                         perspective, what lies behind the COP is cut away
+                         before the divide by W.
+      3. CLIP         -- trim to the normalized [-1, 1] window (trabalho 1.4),
+                         in 2D for both projections. Points, lines and polygons
+                         each use their own technique; line clipping honours
+                         the selected method.
       4. viewport     -- map each *surviving* SCN vertex to pixels.
 
     Clipping runs in SCN space, before the viewport, so the viewport transform is
@@ -94,7 +108,7 @@ def render(
     objects need no branch of their own: an Object3D is just segments, so it
     takes the line-clipping path like a wireframe.
     """
-    scn = world_to_scn_matrix(window)
+    scn = world_to_scn_matrix(window, projection)
     commands: list[DrawCommand] = []
     for obj in display_file:
         if obj.type is ObjectType.POINT:
@@ -113,7 +127,7 @@ def _clip_point_object(
 ) -> None:
     """Point clipping: keep the point only if it survives the clip window."""
     position = map_to_scn(scn, obj.coordinates[0])
-    if clipping.clip_point(position) is None:
+    if position is None or clipping.clip_point(position) is None:
         return
     px, py = viewport.apply(position)
     out.append(DrawPoint(px, py, obj.color))
@@ -131,10 +145,10 @@ def _clip_curve_object(
     so the curve is drawn "até onde quero" -- runs of consecutive in-window
     points become DrawLines, and the parts leaving the window simply stop. This
     is the incremental point clipping the slides describe, not segment clipping
-    against the border.
+    against the border. In perspective, a point behind the COP counts as out.
     """
     scn_points = [map_to_scn(scn, point) for point in obj.generated_points()]
-    inside = [clipping.clip_point(p) is not None for p in scn_points]
+    inside = [p is not None and clipping.clip_point(p) is not None for p in scn_points]
     for i in range(len(scn_points) - 1):
         if not (inside[i] and inside[i + 1]):
             continue
@@ -152,9 +166,10 @@ def _clip_line_object(
 ) -> None:
     """Line clipping for each of an object's segments with the chosen technique."""
     for start, end in obj.to_segments():
-        scn_start = map_to_scn(scn, start)
-        scn_end = map_to_scn(scn, end)
-        clipped = clipping.clip_line(scn_start, scn_end, line_clipper)
+        scn_segment = map_segment_to_scn(scn, start, end)
+        if scn_segment is None:  # wholly behind the COP
+            continue
+        clipped = clipping.clip_line(*scn_segment, line_clipper)
         if clipped is None:
             continue
         px1, py1 = viewport.apply(clipped[0])
@@ -169,7 +184,7 @@ def _clip_filled_polygon(
     obj: GraphicObject, scn: Matrix, viewport: ViewportTransform, out: list[DrawCommand]
 ) -> None:
     """Polygon clipping (Sutherland-Hodgman) for a filled wireframe."""
-    scn_vertices = [map_to_scn(scn, point) for point in obj.coordinates]
+    scn_vertices = map_polygon_to_scn(scn, obj.coordinates)
     clipped = clipping.sutherland_hodgman(scn_vertices)
     if len(clipped) < 3:  # nothing (or a degenerate sliver) left to fill
         return

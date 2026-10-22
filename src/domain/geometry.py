@@ -131,14 +131,25 @@ def compose(*matrices: Sequence[Sequence[float]]) -> list[list[float]]:
     return result
 
 
-def transform_point(matrix: Sequence[Sequence[float]], point: Point) -> Point:
-    """Apply a (dim+1)x(dim+1) homogeneous matrix to a point."""
+def homogeneous_product(matrix: Sequence[Sequence[float]], point: Point) -> tuple[float, ...]:
+    """The full homogeneous result of matrix x (point, 1), W included, undivided.
+
+    The perspective projection (trabalho 1.8) needs W itself before dividing:
+    its sign tells whether the point lies in front of the center of projection.
+    """
     vector = point.homogeneous()
     if len(matrix) != len(vector):
         raise ValueError("matrix size does not match point dimension")
-    result = [sum(matrix[r][c] * vector[c] for c in range(len(vector))) for r in range(len(matrix))]
+    return tuple(
+        sum(matrix[r][c] * vector[c] for c in range(len(vector))) for r in range(len(matrix))
+    )
+
+
+def transform_point(matrix: Sequence[Sequence[float]], point: Point) -> Point:
+    """Apply a (dim+1)x(dim+1) homogeneous matrix to a point."""
+    result = homogeneous_product(matrix, point)
     w = result[-1]
     spatial = result[:-1]
-    if w not in (0.0, 1.0):  # perspective divide, ready for trabalho 1.8
+    if w not in (0.0, 1.0):  # perspective divide
         spatial = [component / w for component in spatial]
     return Point(*spatial)

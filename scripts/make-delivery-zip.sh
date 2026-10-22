@@ -4,9 +4,11 @@
 #
 # Archives the exact tagged snapshot (git archive -> reproducible, no .venv,
 # __pycache__, or local junk), then strips the files the course delivery does
-# not ship: CLAUDE.md (AI-agent instructions), .gitignore, and the whole docs/
-# tree. Matches the layout of the hand-made entrega-1.1.zip: code + README +
-# project config only, under a trabalho-N.M/ prefix.
+# not ship: CLAUDE.md (AI-agent instructions), .gitignore, and the docs/ tree
+# -- all of it but docs/executar.md, the run guide the README links to, which
+# walks through each trabalho's demo. The layout is the hand-made
+# entrega-1.1.zip's (code + README + project config, under a trabalho-N.M/
+# prefix) plus that guide.
 #
 # Usage:
 #   scripts/make-delivery-zip.sh <version>      # e.g. 1.2
@@ -44,13 +46,16 @@ excludes=(
   "${prefix}.gitignore"
   "${prefix}docs/*"
 )
+# The run guide survives the docs/ pattern above.
+keep="${prefix}docs/executar.md"
 
 echo "Building ${output} from tag ${tag} ..."
 git archive --format=zip --prefix="${prefix}" -o "${output}" "${tag}"
 
 # `zip -d` errors if a pattern matches nothing; ignore that so the script stays
-# green even if a future tag drops one of these paths.
-zip -q -d "${output}" "${excludes[@]}" || true
+# green even if a future tag drops one of these paths. -x spares `keep` from the
+# deletion.
+zip -q -d "${output}" "${excludes[@]}" -x "${keep}" || true
 
 echo "Done. Contents:"
 unzip -l "${output}"

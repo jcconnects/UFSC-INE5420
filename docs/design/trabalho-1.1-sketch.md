@@ -218,6 +218,42 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > casa 2D) no menu *Samples → 3D models*. **Correção:** B-Splines agora são de fato puladas na exportação,
 > como a decisão do 1.6 dizia (antes viravam um wireframe dos pontos de controle).
 
+> **Estado no 1.8 (implementado).** A costura que o 1.8 pedia — trocar a translação da view (COP em vez de
+> VRP) e a matriz do passo PROJECT — estava pré-cortada em `projection.py` e foi preenchida sem estágio novo.
+> **Projeção como estratégia:** nasceu a interface `Projection` (`view_origin` = o ponto levado à origem no
+> passo 1, `projection_matrix` = o passo 4, `matrix(window)` = passos 1–4 compostos) com duas implementações:
+> `ParallelProjection` (o 1.7, intocado) e `PerspectiveProjection(cop_distance)`, o algoritmo da aula:
+> **transladar o COP para a origem**, determinar os ângulos do VPN com X e Y e alinhá-lo com Z (a mesma
+> `view_matrix` da paralela) e **projetar com a matriz de perspectiva**, dividindo por W. **COP virtual atrás
+> do plano de projeção:** o COP fica na normal da window, pelo centro, a uma distância `d` do lado do
+> observador — `COP = VRP + d·VPN`; nunca é desenhado e acompanha a window em pan/órbita/zoom. Como o VPN
+> deste SGI aponta da window para o observador (mão direita, desde o 1.7), após o alinhamento a cena fica em
+> −z e a window em `z = −d`: a matriz é a da aula com `d → −d`, `W = −z/d` (profundidade/d) e
+> `x_p = x/W`, `y_p = y/W` (semelhança de triângulos). Pontos no plano da window têm W = 1 e não mudam — o
+> mundo 2D (z = 0) aparece idêntico nas duas projeções. **Normalização:** a imagem cai no plano da window,
+> centrada no centro dela, então a mesma escala `2/w, 2/h` serve; `world_to_scn_matrix(window, projection)`
+> continua sendo **uma** matriz 4×4 por frame, e a única parte não linear é a divisão por W ao mapear cada
+> ponto (`geometry.homogeneous_product` expõe o vetor com W antes da divisão). **O que fica atrás do COP:** a
+> divisão só vale na frente do COP (W ≤ 0 espelharia a geometria ou dividiria por zero), então
+> `trim_segment_to_front`/`trim_polygon_to_front` cortam antes da divisão o que está atrás dele — no espaço
+> homogêneo, onde interpolar equivale a interpolar no mundo, porque as matrizes são lineares —, e um ponto
+> atrás do COP não é projetado. Isso **não** é clipping contra a window: o clipping continua **2D**, em SCN,
+> depois da projeção, como a spec pede. Na paralela W ≡ 1 e nada é cortado. **Pipeline (§5):** a lista de
+> estágios não mudou; `render(..., projection)` recebe a projeção escolhida e os ramos ponto/curva/reta/
+> polígono só passaram a usar os mapeadores que respeitam o COP (`map_to_scn` devolve `None` atrás dele,
+> `map_segment_to_scn`/`map_polygon_to_scn` aparam). **Grande angular × teleobjetiva:** `d` curto ⇒ campo de
+> visão largo e convergência forte; `d` longo ⇒ campo estreito e profundidade achatada, tendendo à paralela.
+> **GUI:** seção *Projection* na sidebar (rádio *Parallel orthogonal* / *Perspective*, slider logarítmico de
+> `d` entre 25 e 5000 com as pontas *wide-angle* ↔ *telephoto*, sincronizado com um campo numérico) e leitura
+> do COP e do FOV horizontal na margem inferior do canvas. O `Controller` guarda a projeção (default:
+> paralela, então 1.1–1.7 seguem iguais) e expõe `set_projection`, `center_of_projection` e `field_of_view`.
+> **Samples:** `samples/3d/street.obj`, uma rua com 8 prédios (paralelepípedos), meio-fio e faixas recuando
+> em −z: em perspectiva as arestas ao longo de z convergem para o ponto de fuga no centro; na paralela de
+> frente colapsam em pontos. O `samples/3d/parallelepiped.obj` do 1.7 atende ao "carregar um paralelepípedo
+> de um .obj". **Testes:** o exercício do tetraedro em sala (COP (50, 250, 40)) reproduzido numericamente, a
+> imagem como interseção do projetor com o plano da window, projetores convergindo no COP, `d → ∞` tendendo à
+> paralela e o corte atrás do COP.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
@@ -272,7 +308,7 @@ GraphicObject (abstrata)
   às pressas.
 
 ### 4.7 `projection.py` — o estágio que materializa o 3D (seam #2)
-- Interface `Projection.project(point) -> Point2D`.
+- Interface `Projection.matrix(window)` → matriz homogênea dos passos 1–4 (view + projeção).
 - `ParallelProjection` (1.7) e `PerspectiveProjection` (1.8, centro de projeção variável).
 - **Não existe em 1.1** — o arquivo pode nem ser criado ainda. O que existe hoje é o **lugar dele no
   pipeline** (§5): um estágio opcional. Quando o 1.7 chegar, cria-se a classe e insere-se o estágio; nada
@@ -280,6 +316,9 @@ GraphicObject (abstrata)
 - **No 1.7:** criado com funções puras, não classes — `view_matrix(VRP, VPN, VUP)` e `parallel_orthogonal()`
   —, pois só existe uma projeção. A escolha paralela/perspectiva (e a interface comum) entra no 1.8, que
   troca a translação da view (COP em vez de VRP) e a matriz do passo PROJECT.
+- **No 1.8:** as funções puras viraram as duas estratégias atrás da interface `Projection`, e a perspectiva
+  ganhou o corte do que fica atrás do COP antes da divisão por W (`trim_segment_to_front`,
+  `trim_polygon_to_front`). O clipping contra a window segue 2D.
 
 ### 4.8 `clipping.py`
 - Clipagem de ponto, reta (2 técnicas selecionáveis: C-S / L-B / NLN), polígono, curva (1.5).
@@ -309,9 +348,11 @@ Pipeline 2D (1.1):        [ to_segments, normalize(≈id), viewport ]
 + clipping (1.4):         [ to_segments, normalize, CLIP, viewport ]
 + 3D (1.7/1.8):           [ to_segments, normalize, PROJECT, clip, viewport ]
 1.7 (implementado):       [ to_segments, view(VRP/VPN/VUP), PROJECT, normalize, clip, viewport ]
+1.8 (implementado):       [ to_segments, view(VRP|COP), PROJECT(paralela|perspectiva ÷W), normalize, clip 2D, viewport ]
 ```
 No 1.7 o "normalize" se dividiu em view + normalização com o PROJECT no meio (a ordem do algoritmo da aula);
-como os três são lineares, viram uma só matriz por frame (`normalization.world_to_scn_matrix`).
+como os três são lineares, viram uma só matriz por frame (`normalization.world_to_scn_matrix`). No 1.8 a
+mesma matriz recebe a projeção escolhida; a perspectiva só acrescenta a divisão por W ao mapear cada ponto.
 Trocar 2D→3D = **inserir `PROJECT`** e alimentar o pipeline com coords 3D. O código de cada estágio
 existente não muda. Este arquivo é o coração do "sim, a arquitetura suporta 3D".
 

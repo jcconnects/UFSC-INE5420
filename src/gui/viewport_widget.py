@@ -13,7 +13,9 @@ Mouse navigation (trabalho 1.7 adds the orbit, like Blender's view drag):
     left-drag    orbit: yaw/pitch the window about its center (VRP), so the
                  scene turns as if grabbed
     wheel        zoom
-The current VRP/VPN is printed in the top margin as the view moves.
+The current VRP/VPN is printed in the top margin as the view moves, and the
+projection in use (trabalho 1.8: the COP and field of view of a perspective)
+in the bottom margin.
 
 Subcanvas: the drawable widget is larger than the *subcanvas* -- the red-bordered
 inner rectangle the normalized window maps into. Geometry outside the window
@@ -31,6 +33,7 @@ from PyQt6.QtWidgets import QWidget
 
 from app.controller import Controller
 from app.render_pipeline import DrawLine, DrawPoint, DrawPolygon
+from domain.objects import Color
 from domain.window import WindowAxis
 
 ZOOM_IN_FACTOR = 0.9
@@ -41,6 +44,10 @@ ORBIT_DEGREES_PER_PIXEL = 0.5
 # Pixel inset of the subcanvas (red border) from each widget edge.
 SUBCANVAS_MARGIN = 20.0
 _CANVAS_COLOR = QColor(0, 0, 0)
+# Paint for objects that arrive without a colour of their own: a .obj import
+# (the file carries none) or a new object whose colour was not picked. The
+# domain default is black, which would vanish on the black canvas.
+DEFAULT_PAINT: Color = (255, 255, 255)
 _SUBCANVAS_COLOR = QColor(220, 60, 60)
 _LABEL_COLOR = QColor(255, 255, 255)
 
@@ -96,6 +103,15 @@ class ViewportWidget(QWidget):
         vrp, vpn, _ = self.controller.view_vectors()
         readout = f"VRP {_triple(vrp, 0)}   VPN {_triple(vpn, 2)}"
         painter.drawText(int(x1) - metrics.horizontalAdvance(readout), int(y0) - 6, readout)
+        # How the scene is projected, left-aligned in the bottom margin.
+        painter.drawText(int(x0), int(y1) + metrics.ascent() + 2, self._projection_readout())
+
+    def _projection_readout(self) -> str:
+        cop = self.controller.center_of_projection()
+        if cop is None:
+            return "Parallel orthogonal projection"
+        fov = self.controller.field_of_view()
+        return f"Perspective   COP {_triple(cop.coords, 0)}   FOV {fov:.0f}°"
 
     def wheelEvent(self, event) -> None:  # noqa: N802 - Qt override
         factor = ZOOM_IN_FACTOR if event.angleDelta().y() > 0 else ZOOM_OUT_FACTOR
