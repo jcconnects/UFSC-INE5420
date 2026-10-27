@@ -62,3 +62,11 @@ def test_3d_models_load_as_object3d_wireframes():
         objects = Controller().load_obj(str(_SAMPLES / "3d" / f"{stem}.obj"))
         assert [o.type for o in objects] == [ObjectType.OBJECT3D], stem
         assert len(objects[0].segments) == edges, stem
+
+
+@pytest.mark.skipif(not (_SAMPLES / "3d").is_dir(), reason="samples/3d not present")
+def test_bezier_surface_sample_has_three_patches():
+    # Trabalho 1.9 asks for a surface of at least 3 patches loaded from a .obj.
+    objects = Controller().load_obj(str(_SAMPLES / "3d" / "bezier_surface.obj"))
+    assert [o.type for o in objects] == [ObjectType.SURFACE]
+    assert len(objects[0].patches) == 3

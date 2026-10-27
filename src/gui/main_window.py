@@ -89,6 +89,8 @@ _SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
     "house_3d": (120, 72, 48),       # brown
     # perspective scene (trabalho 1.8)
     "street": (100, 149, 237),       # cornflower-blue buildings
+    # Bézier surface (trabalho 1.9)
+    "bezier_surface": (60, 179, 113),  # medium sea-green terrain
 }
 _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # house
