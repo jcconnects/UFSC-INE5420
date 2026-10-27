@@ -93,7 +93,7 @@ class ObjectDialog(QDialog):
             # Trabalho 1.9: the geometry matrix row by row, read 16 points at a
             # time -- every 4 rows of 4 points make one patch.
             self.coordinates_field.setPlaceholderText(
-                "(x11,y11,z11),…,(x14,y14,z14);(x21,…);… — 4 points per row, "
+                "(x11,y11,z11),...,(x14,y14,z14);(x21,...);... — 4 points per row, "
                 "rows split by ';', every 4 rows (16 points) = one patch"
             )
         else:

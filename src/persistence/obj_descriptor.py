@@ -43,6 +43,7 @@ from domain.objects import (
     Point2D,
     Wireframe,
 )
+from domain.surfaces import Patch
 
 _HEADER = "# SGI - INE5420 world export (Wavefront .obj)"
 
@@ -226,7 +227,7 @@ def _build_planar(keyword: str, name: str, refs: list[int], vertices: list[Point
     return Wireframe(name, points)
 
 
-def _patch(refs: list[int], vertices: list[Point]) -> list[list[Point]]:
+def _patch(refs: list[int], vertices: list[Point]) -> Patch:
     """A `surf` element's control points in rows of 4.
 
     The format lists them u varying fastest, so each row holds one v. A `surf`
