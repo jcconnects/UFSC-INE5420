@@ -8,6 +8,7 @@ trabalho *inserts a stage* rather than rewriting existing ones:
     + 1.4:       [ to_segments, normalize, CLIP, viewport ]
     + 1.7:       [ to_segments, view, PROJECT, normalize, clip, viewport ]
     + 1.8:       same stages; PROJECT is parallel or perspective
+    + 1.9:       same stages; a surface decomposes into its mesh's segments
 
 Going from 2D to 3D was literally "insert the PROJECT stage" -- seam #2 of the
 2D->3D plan. In 1.7 the normalize stage became view (VRP/VPN/VUP) + PROJECT
@@ -15,7 +16,10 @@ Going from 2D to 3D was literally "insert the PROJECT stage" -- seam #2 of the
 frame (domain.normalization); clipping, the viewport and the GUI's drawing did
 not change. In 1.8 the PROJECT stage takes the user's projection: the
 perspective moves the COP (not the VRP) to the origin and divides by W, and
-the mapping cuts away what lies behind the COP. Clipping stays 2D.
+the mapping cuts away what lies behind the COP. Clipping stays 2D. In 1.9 a
+bicubic Bézier surface is one more object type: each patch is sampled into a
+grid of curves whose segments take the line-clipping branch, so no stage
+changed.
 
 The output is a list of neutral draw commands (DrawPoint / DrawLine). The GUI
 executes those with drawPoint/drawLine only; it never learns the dimension of
@@ -106,7 +110,8 @@ def render(
     Clipping runs in SCN space, before the viewport, so the viewport transform is
     applied only to what the clip left behind -- the spec's requirement. 3D
     objects need no branch of their own: an Object3D is just segments, so it
-    takes the line-clipping path like a wireframe.
+    takes the line-clipping path like a wireframe, and so does the mesh of a
+    surface (trabalho 1.9).
     """
     scn = world_to_scn_matrix(window, projection)
     commands: list[DrawCommand] = []

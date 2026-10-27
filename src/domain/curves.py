@@ -57,18 +57,24 @@ def segment_count(control_point_total: int) -> int:
     return 1 + (control_point_total - POINTS_PER_SEGMENT) // POINTS_PER_EXTRA_SEGMENT
 
 
-def _blend(t: float, controls: tuple[Point, Point, Point, Point]) -> Point:
-    """Evaluate one cubic Bézier segment at parameter t in [0, 1].
+def blending_weights(t: float) -> list[float]:
+    """The four blending weights T . M_B at parameter t in [0, 1].
 
-    Computes T . M_B once to get the four blending weights, then takes the
-    weighted sum of the control points component by component (works for 2D or
-    3D points alike).
+    weights[j] is the Bernstein blend of control point j. The bicubic surface
+    (trabalho 1.9) reuses them, one row per parameter.
     """
     powers = (t * t * t, t * t, t, 1.0)
     # weights[j] = sum_i powers[i] * M_B[i][j]  -> Bernstein blend of control j.
-    weights = [
-        sum(powers[i] * _BEZIER_MATRIX[i][j] for i in range(4)) for j in range(4)
-    ]
+    return [sum(powers[i] * _BEZIER_MATRIX[i][j] for i in range(4)) for j in range(4)]
+
+
+def _blend(t: float, controls: tuple[Point, Point, Point, Point]) -> Point:
+    """Evaluate one cubic Bézier segment at parameter t in [0, 1].
+
+    Takes the four blending weights T . M_B, then the weighted sum of the
+    control points component by component (works for 2D or 3D points alike).
+    """
+    weights = blending_weights(t)
     dimension = controls[0].dimension
     components = [
         sum(weights[j] * controls[j][axis] for j in range(4)) for axis in range(dimension)

@@ -51,9 +51,10 @@ Abre a janela do SGI. A interface tem:
 | **Rotacionar a window (1.7)** | Sidebar *Window rotation*: eixo (*Roll* = VPN, *Pitch*, *Yaw*), ângulo, *Rotate window* / *Rotate opposite* |
 | **Reset view (1.7)** | Botão *Reset view*: volta VRP, VPN, VUP e zoom iniciais |
 | **Transformar objeto** | Selecione na lista → *Transform*: translação (dx, dy, dz), escala (sx, sy, sz) e rotação em torno do eixo X/Y/Z ou de um eixo arbitrário, passando pelo centro do objeto, pela origem ou por um ponto |
-| **Modelos 3D** | *Samples → 3D models* (eixos, cubo, pirâmide, paralelepípedo, casa 3D, rua) |
+| **Modelos 3D** | *Samples → 3D models* (eixos, cubo, pirâmide, paralelepípedo, casa 3D, rua, superfície de Bézier) |
 | **Projeção (1.8)** | Sidebar *Projection*: *Parallel orthogonal* (a do 1.7, padrão) ou *Perspective* |
 | **Centro de projeção (1.8)** | Slider ou campo *COP distance d* (só em perspectiva): d curto = grande angular, d longo = teleobjetiva. O COP e o campo de visão aparecem na margem inferior do canvas |
+| **Superfície de Bézier (1.9)** | *Add object* → tipo *surface*: pontos de controle 16 a 16, linhas da matriz separadas por `;` (ver abaixo); ou *Samples → 3D models → Bezier Surface* (3 retalhos, lida de um `.obj`) |
 
 ### Perspectiva (Trabalho 1.8)
 
@@ -71,6 +72,32 @@ Roteiro rápido:
    a direita (*telephoto*, d longo) a profundidade achata e a imagem tende à paralela.
 4. *File → Import .obj...* com `samples/3d/parallelepiped.obj` (ou *Samples → 3D models → Parallelepiped*)
    carrega o paralelepípedo de um arquivo; orbite com o botão esquerdo para vê-lo em perspectiva.
+
+### Superfícies bicúbicas de Bézier (Trabalho 1.9)
+
+Uma superfície é uma lista de retalhos, e cada retalho é a sua matriz de geometria: 4×4 pontos de controle.
+Cada ponto `Q(s,t) = S·M_B·G·M_Bᵀ·Tᵀ` é a soma das 16 *blending functions* `B_i(s)·B_j(t)` vezes os pontos
+de controle, e o retalho é desenhado como uma grade de curvas (passo 0,1 em s e em t). Como tudo até agora,
+o clipping é 2D, contra a window, depois da projeção.
+
+Exemplo pronto para colar (*Add object* → tipo *surface*): o Dataset 1 do exercício "Plotagem de Superfície
+Bézier Bicúbica", escalado por 0,2 e centrado — um retalho de 60×60 em z = 0 com uma elevação no meio:
+
+```
+(-30,-30,0),(-30,-10,0),(-30,10,0),(-30,30,0);(-10,-30,0),(-10,-10,20),(-10,10,20),(-10,30,0);(10,-30,0),(10,-10,20),(10,10,20),(10,30,0);(30,-30,0),(30,-10,0),(30,10,0),(30,30,0)
+```
+
+Roteiro rápido:
+
+1. *Samples → 3D models → Bezier Surface*: um "terreno" ondulado de 3 retalhos lido de
+   `samples/3d/bezier_surface.obj` — de frente aparece o perfil da onda.
+2. Orbite com o botão esquerdo (ou *Window rotation* → *Pitch*, 30°): aparece a malha dos 3 retalhos, com
+   junções suaves.
+3. *Projection → Perspective* e o slider *COP distance d*: as partes mais próximas do COP crescem.
+4. Zoom e pan até a superfície cruzar a borda vermelha: as linhas são cortadas na borda.
+5. *Add object* → tipo *surface* → cole o exemplo acima e orbite: um retalho com a elevação no meio.
+6. Com 15 pontos (ou 5 linhas) aparece o aviso *Invalid object* e nada é adicionado.
+7. *File → Export .obj...* e depois *File → Import .obj...*: a mesma superfície volta (gravada com `surf`).
 
 ### Formato das coordenadas
 
@@ -92,6 +119,9 @@ Desde o Trabalho 1.7 o mundo é 3D: todo tipo aceita `(x, y, z)`, e um `(x, y)` 
 
 - **object3d** (modelo de arame) → pontos em **pares**, um segmento por par:
   `(0,0,0),(50,0,0),(0,0,0),(0,50,0),(0,0,0),(0,0,50)` (três arestas saindo da origem)
+- **surface** (superfície bicúbica de Bézier, 1.9) → as **linhas** da matriz de geometria separadas por `;`,
+  4 pontos por linha; cada 4 linhas (16 pontos) formam um retalho:
+  `(x11,y11,z11),(x12,y12,z12),(x13,y13,z13),(x14,y14,z14);(x21,y21,z21),...;...`
 
 ## Rodar os testes
 

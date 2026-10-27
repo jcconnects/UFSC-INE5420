@@ -72,6 +72,7 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 │    objects.py           GraphicObject: Point/Line/Wireframe/... │
 │    curves.py            blending functions de Bézier (1.5)      │
 │    bspline.py           B-Spline uniforme, Forward Diff. (1.6)  │
+│    surfaces.py          retalhos bicúbicos de Bézier (1.9)      │
 │    display_file.py      coleção nomeada + cache de coords SCN   │
 │    window.py            região de mundo + pan/zoom/rotate       │
 │    normalization.py     mundo → SCN (view transform)            │
@@ -80,7 +81,7 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 │    viewport.py          SCN/2D → tela (sem distorcer)           │
 │  persistence/    (nome `persistence`, não `io`: `io` colidiria │
 │    obj_descriptor.py    com a stdlib) — leitura/escrita .obj    │
-│    parser.py            parse de "(x,y[,z]),..."                │
+│    parser.py            parse de "(x,y[,z]),..." e de ";" (1.9) │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -254,6 +255,33 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > imagem como interseção do projetor com o plano da window, projetores convergindo no COP, `d → ∞` tendendo à
 > paralela e o corte atrás do COP.
 
+> **Estado no 1.9 (implementado).** O 1.9 é o caso "acrescenta um tipo de objeto": nenhum estágio novo e
+> nenhuma mudança na lógica de `render()`. **Matemática:** nasceu `domain/surfaces.py` (funções puras, como
+> `curves.py`). Um retalho é a sua matriz de geometria G, 4×4 pontos de controle P_ij, e `patch_point(G, s, t)`
+> calcula Q(s,t) = S·M_B·G·M_Bᵀ·Tᵀ por eixo — a soma das **16 blending functions** B_i(s)·B_j(t) vezes
+> P_ij. Os pesos S·M_B e M_Bᵀ·Tᵀ são os da curva do 1.5, agora públicos em `curves.blending_weights(t)`: a
+> matriz de Bézier continua num lugar só. `sample_patch(G, n)` amostra o retalho numa grade (n+1)×(n+1) em
+> (s, t), passo 1/n (`STEPS_PER_PATCH = 10`): cada linha da grade é uma curva de s constante, cada coluna uma
+> de t constante. **Objeto:** `BezierSurface` (`ObjectType.SURFACE`) é uma lista de retalhos, como a spec
+> pede; guarda os pontos de controle achatados em `coordinates` (16 por retalho, linha a linha), então o
+> `transform` herdado e o diálogo de transformação valem sem mudança, e `center()` usa os pontos distintos
+> (uma borda compartilhada conta uma vez). `to_segments()` devolve os segmentos das linhas e das colunas da
+> grade de cada retalho (2·n·(n+1) por retalho), então a superfície segue o ramo de clipagem de retas como um
+> `Object3D`: clipping 2D (C-S/L-B) em SCN e, na perspectiva, o corte atrás do COP, sem código novo.
+> **Entrada:** tipo `surface` no diálogo *Add object*; `parser.parse_matrix` separa as linhas da matriz por
+> `;` (cada uma via `parse_coordinates`, com o `eval` ainda isolado no parser) e `BezierSurface.from_rows`
+> lê **16 a 16**: 4 linhas de 4 pontos = 1 retalho, 8 linhas = 2, … **`.obj`:** a sintaxe free-form padrão do
+> Wavefront, leitura e escrita — `cstype bezier` e `deg 3 3`, depois, por retalho, `surf 0 1 0 1 v1 … v16`,
+> `parm u 0 1`, `parm v 0 1` e `end`; linhas continuadas com `\` são juntadas antes (o exemplo de retalho
+> da própria spec do formato usa). Outra base ou grau (a B-Spline do 1.10, Bézier racional) ou `surf`
+> misturado com `p`/`l`/`f` no mesmo objeto dão erro claro. A exportação grava os pontos distintos uma vez e
+> um bloco `surf` por retalho (antes a superfície sairia como um `l` falso). **Sample:**
+> `samples/3d/bezier_surface.obj`, um "terreno" ondulado de 3 retalhos sobre uma rede de controle 4×10; os
+> retalhos dividem as colunas da borda e os vizinhos de cada junção são colineares a ela, então a junção é
+> suave. **Gancho para o 1.10:** a superfície B-Spline é uma classe irmã (matriz m×n de 4×4 a 20×20,
+> janelas 4×4 deslizantes, a mesma grade amostrada por forward differences) mais um ramo `cstype bspline` na
+> leitura; o pipeline não muda.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
@@ -283,7 +311,7 @@ GraphicObject (abstrata)
        ├── Curve2D      (1.5)  amostra a curva de Bézier e devolve segmentos
        ├── BSpline      (1.6)  B-Spline uniforme por Forward Differences
        ├── Object3D     (1.7)  modelo de arame: lista de segmentos (pares de pontos 3D)
-       └── Surface      (1.9/1.10) malha de retalhos → segmentos
+       └── BezierSurface (1.9) lista de retalhos 4×4 → grade de curvas → segmentos
 ```
 - **`to_segments()` é a chave:** o renderer só sabe desenhar segmentos. Curva, superfície e objeto 3D
   projetado todos entram por esse mesmo método. Adicionar um tipo novo = uma subclasse, zero mudança na GUI.
@@ -333,10 +361,12 @@ GraphicObject (abstrata)
 ### 4.10 `persistence/parser.py` e `persistence/obj_descriptor.py`
 > Módulo chamado `persistence` (não `io`) para não sombrear a stdlib `io` do Python.
 - `parser.parse_coordinates(s)`: padrão `(x1,y1),(x2,y2),...` via `list(eval(s))` (exigência da spec).
-  Naturalmente aceita a 3ª coordenada no 1.7 e o separador `;` de matrizes no 1.9. `eval` isolado num só
-  módulo mantém o resto limpo.
+  Naturalmente aceita a 3ª coordenada no 1.7. `eval` isolado num só módulo mantém o resto limpo.
+- `parser.parse_matrix(s)` (1.9, implementado): o separador `;` de matrizes — divide as linhas da matriz de
+  geometria e lê cada uma com `parse_coordinates`.
 - `obj_descriptor` (a partir do 1.3): `DescritorOBJ` transcreve cada objeto para Wavefront `.obj` (nome,
-  tipo, vértices, arestas) e lê de volta. Módulo de persistência separado do domínio geométrico.
+  tipo, vértices, arestas) e lê de volta. Módulo de persistência separado do domínio geométrico. No 1.9 lê
+  e grava superfícies como `surf` free-form (`cstype bezier`, `deg 3 3`), um `surf` por retalho.
 
 ## 5. Camada de aplicação — a espinha dorsal
 
@@ -349,6 +379,7 @@ Pipeline 2D (1.1):        [ to_segments, normalize(≈id), viewport ]
 + 3D (1.7/1.8):           [ to_segments, normalize, PROJECT, clip, viewport ]
 1.7 (implementado):       [ to_segments, view(VRP/VPN/VUP), PROJECT, normalize, clip, viewport ]
 1.8 (implementado):       [ to_segments, view(VRP|COP), PROJECT(paralela|perspectiva ÷W), normalize, clip 2D, viewport ]
+1.9 (implementado):       mesmos estágios; a superfície entra como os segmentos da sua grade de curvas
 ```
 No 1.7 o "normalize" se dividiu em view + normalização com o PROJECT no meio (a ordem do algoritmo da aula);
 como os três são lineares, viram uma só matriz por frame (`normalization.world_to_scn_matrix`). No 1.8 a
@@ -379,7 +410,7 @@ A GUI é imune à passagem 2D→3D: ela só executa `DrawCommand`s. Um cubo proj
 ```
 src/
   domain/
-    geometry.py  transforms.py  objects.py  curves.py  bspline.py  display_file.py
+    geometry.py  transforms.py  objects.py  curves.py  bspline.py  surfaces.py  display_file.py
     window.py    normalization.py  projection.py  clipping.py  viewport.py
   persistence/            # nome evita colisão com a stdlib `io`
     parser.py    obj_descriptor.py

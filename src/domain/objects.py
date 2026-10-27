@@ -1,8 +1,8 @@
 """Graphic objects stored in the display file.
 
 The hierarchy the spec implies: Point / Line / Wireframe. It only grows in
-later trabalhos (Curve2D in 1.5, BSpline in 1.6, Object3D in 1.7, Surface in
-1.9/1.10).
+later trabalhos (Curve2D in 1.5, BSpline in 1.6, Object3D in 1.7, BezierSurface
+in 1.9).
 
 Every object implements `to_segments()`, which decomposes it into line
 segments. This is the guarantee that keeps the renderer trivial forever: the
@@ -19,8 +19,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from . import bspline, curves
+from . import bspline, curves, surfaces
 from .geometry import Point, centroid
+from .surfaces import Patch
 
 
 class ObjectType(Enum):
@@ -30,6 +31,7 @@ class ObjectType(Enum):
     CURVE = "curve"
     BSPLINE = "bspline"
     OBJECT3D = "object3d"
+    SURFACE = "surface"
 
 
 Segment = tuple[Point, Point]
@@ -277,10 +279,7 @@ class Object3D(GraphicObject):
 
     def vertices(self) -> list[Point]:
         """Distinct vertices, in first-seen order (shared endpoints counted once)."""
-        unique: dict[tuple[float, ...], Point] = {}
-        for point in self.coordinates:
-            unique.setdefault(point.coords, point)
-        return list(unique.values())
+        return _distinct(self.coordinates)
 
     def center(self) -> Point:
         """Centroid of the distinct vertices.
@@ -289,3 +288,80 @@ class Object3D(GraphicObject):
         segments meet there, pulling the "object center" pivot off-center.
         """
         return centroid(self.vertices())
+
+
+class BezierSurface(GraphicObject):
+    """A bicubic Bézier surface (trabalho 1.9): a list of patches ("retalhos").
+
+    The spec represents a surface by its geometry matrices, one 4x4 matrix of
+    control points per patch. `coordinates` holds them flattened, 16 points per
+    patch, row by row, so the inherited `transform` moves every control point
+    with one matrix, exactly as for Object3D. A control point shared by two
+    patches is stored once per patch and moves identically in each.
+
+    `to_segments()` samples each patch on a grid (surfaces.sample_patch) and
+    connects neighbouring grid points: the grid's rows are curves of constant
+    s, its columns curves of constant t. So the surface draws (and clips) as
+    line segments like every other object, and the pipeline needs no new stage.
+    """
+
+    # n: each patch is sampled on an (n+1) x (n+1) grid, step 1/n in s and t.
+    # Fixed here, not exposed in the GUI -- the same call as for the curves.
+    STEPS_PER_PATCH = 10
+
+    def __init__(self, name: str, patches: list[Patch], color: Color = BLACK) -> None:
+        if not patches:
+            raise ValueError("a surface needs at least one patch")
+        if any(len(patch) != 4 or any(len(row) != 4 for row in patch) for patch in patches):
+            raise ValueError("each patch needs 4 rows of 4 control points (16 points)")
+        control_points = [point for patch in patches for row in patch for point in row]
+        super().__init__(name, control_points, color)
+
+    @classmethod
+    def from_rows(cls, name: str, rows: list[list[Point]], color: Color = BLACK) -> BezierSurface:
+        """Build from the typed matrix rows, 16 control points at a time.
+
+        The typed input `(x11,y11,z11),...;(x21,y21,z21),...;...` has 4 points
+        per row; every 4 rows make one patch (4 rows = 1 patch, 8 rows = 2, ...).
+        """
+        if not rows or len(rows) % 4:
+            raise ValueError(
+                "a surface takes its rows 4 at a time, one patch per 4 rows "
+                f"(got {len(rows)} rows)"
+            )
+        return cls(name, [rows[i : i + 4] for i in range(0, len(rows), 4)], color)
+
+    @property
+    def type(self) -> ObjectType:
+        return ObjectType.SURFACE
+
+    @property
+    def patches(self) -> list[Patch]:
+        rows = [self.coordinates[i : i + 4] for i in range(0, len(self.coordinates), 4)]
+        return [rows[i : i + 4] for i in range(0, len(rows), 4)]
+
+    def to_segments(self) -> list[Segment]:
+        segments: list[Segment] = []
+        for patch in self.patches:
+            grid = surfaces.sample_patch(patch, self.STEPS_PER_PATCH)
+            # Rows are the curves of constant s; columns (the transposed grid)
+            # the curves of constant t.
+            for curve in grid + list(zip(*grid)):
+                segments.extend(zip(curve, curve[1:]))
+        return segments
+
+    def vertices(self) -> list[Point]:
+        """Distinct control points, in first-seen order (shared ones counted once)."""
+        return _distinct(self.coordinates)
+
+    def center(self) -> Point:
+        """Centroid of the distinct control points (see Object3D.center)."""
+        return centroid(self.vertices())
+
+
+def _distinct(points: list[Point]) -> list[Point]:
+    """The points without repeats, in first-seen order."""
+    unique: dict[tuple[float, ...], Point] = {}
+    for point in points:
+        unique.setdefault(point.coords, point)
+    return list(unique.values())

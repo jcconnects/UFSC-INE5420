@@ -3,7 +3,16 @@
 import pytest
 
 from domain.geometry import Point
-from domain.objects import BSpline, Curve2D, Line, Object3D, ObjectType, Point2D, Wireframe
+from domain.objects import (
+    BezierSurface,
+    BSpline,
+    Curve2D,
+    Line,
+    Object3D,
+    ObjectType,
+    Point2D,
+    Wireframe,
+)
 from persistence.obj_descriptor import from_obj, to_obj
 
 
@@ -162,3 +171,72 @@ def test_elements_before_any_name_form_one_unnamed_object():
 def test_object3d_needs_segments_of_3d_points():
     with pytest.raises(ValueError):
         Object3D("flat", [(Point(0, 0), Point(1, 1))])
+
+
+# --- trabalho 1.9: Bézier surfaces as free-form .obj patches ----------------
+
+# The "Bezier patch" example of the .obj spec (paulbourke.net/dataformats/obj),
+# line continuation included: 16 control points, one `surf` element.
+_SPEC_BEZIER_PATCH = """#   3.0 Bezier patch
+v -5.000000 -5.000000 0.000000
+v -5.000000 -1.666667 0.000000
+v -5.000000 1.666667 0.000000
+v -5.000000 5.000000 0.000000
+v -1.666667 -5.000000 0.000000
+v -1.666667 -1.666667 0.000000
+v -1.666667 1.666667 0.000000
+v -1.666667 5.000000 0.000000
+v 1.666667 -5.000000 0.000000
+v 1.666667 -1.666667 0.000000
+v 1.666667 1.666667 0.000000
+v 1.666667 5.000000 0.000000
+v 5.000000 -5.000000 0.000000
+v 5.000000 -1.666667 0.000000
+v 5.000000 1.666667 0.000000
+v 5.000000 5.000000 0.000000
+# 16 vertices
+
+cstype bezier
+deg 3 3
+surf 0.000000 1.000000 0.000000 1.000000 13 14 \\
+15 16 9 10 11 12 5 6 7 8 1 2 3 4
+parm u 0.000000 1.000000
+parm v 0.000000 1.000000
+end
+# 1 element
+"""
+
+
+def test_the_spec_bezier_patch_loads_as_a_surface():
+    [surface] = from_obj(_SPEC_BEZIER_PATCH)
+    assert surface.type is ObjectType.SURFACE
+    [patch] = surface.patches
+    # Rows of 4 references: 13-16 first, 1-4 last.
+    corners = [patch[0][0], patch[0][3], patch[3][0], patch[3][3]]
+    assert corners == [Point(5, -5, 0), Point(5, 5, 0), Point(-5, -5, 0), Point(-5, 5, 0)]
+
+
+def test_only_bicubic_bezier_surfaces_load():
+    # Another basis (the B-Spline of 1.10, a rational Bézier) is not read yet.
+    with pytest.raises(ValueError):
+        from_obj(_SPEC_BEZIER_PATCH.replace("cstype bezier", "cstype bspline"))
+
+
+def test_a_surface_does_not_mix_with_other_elements():
+    with pytest.raises(ValueError):
+        from_obj(_SPEC_BEZIER_PATCH + "l 1 2\n")
+
+
+def test_surface_roundtrip_keeps_its_patches():
+    # Two patches sharing the border row x = 3: its control points are written
+    # once (28 vertices, not 32), and each patch is one `surf` element.
+    first = [[Point(x, y, x * y) for y in range(4)] for x in range(4)]
+    second = [[Point(x, y, 3 * y) for y in range(4)] for x in range(3, 7)]
+    surface = BezierSurface("terrain", [first, second])
+    text = to_obj([Point2D("dot", Point(9, 9, 9)), surface])
+    assert text.count("\nv ") == 1 + 28
+    assert text.count("\nsurf ") == 2
+    restored = from_obj(text)
+    assert [o.type for o in restored] == [ObjectType.POINT, ObjectType.SURFACE]
+    assert restored[1].name == "terrain"
+    assert restored[1].patches == [first, second]

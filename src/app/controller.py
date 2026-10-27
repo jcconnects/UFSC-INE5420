@@ -8,7 +8,8 @@ Since trabalho 1.7 the world is 3D: typed planar input `(x, y)` is lifted to
 `(x, y, 0)`, so every object the GUI builds can take 3D transforms, and the
 window navigates in space. Trabalho 1.8 adds the choice of projection: the
 parallel orthogonal one of 1.7 (the default) or a perspective from a center of
-projection the user can move.
+projection the user can move. Trabalho 1.9 adds bicubic Bézier surfaces, typed
+as the rows of their geometry matrices.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from domain.display_file import DisplayFile
 from domain.geometry import Point
 from domain.objects import (
     BLACK,
+    BezierSurface,
     BSpline,
     Color,
     Curve2D,
@@ -36,7 +38,7 @@ from domain.projection import ParallelProjection, Projection
 from domain.viewport import ViewportTransform
 from domain.window import Window, WindowAxis
 from persistence import obj_descriptor
-from persistence.parser import parse_coordinates
+from persistence.parser import parse_coordinates, parse_matrix
 
 from .render_pipeline import DrawCommand, render
 
@@ -69,9 +71,19 @@ class Controller:
         """Parse coordinates and add a new object of the requested type.
 
         The world is 3D: `(x, y)` is read as `(x, y, 0)`, and `(x, y, z)` as is.
+        A surface takes its matrix rows split by `;`, 4 rows (16 points) per patch.
         """
-        points = [point.lifted(WORLD_DIMENSION) for point in parse_coordinates(raw_coordinates)]
-        obj = self._build(name, object_type, points, color, filled)
+        if object_type is ObjectType.SURFACE:
+            rows = [
+                [point.lifted(WORLD_DIMENSION) for point in row]
+                for row in parse_matrix(raw_coordinates)
+            ]
+            obj = BezierSurface.from_rows(name, rows, color)
+        else:
+            points = [
+                point.lifted(WORLD_DIMENSION) for point in parse_coordinates(raw_coordinates)
+            ]
+            obj = self._build(name, object_type, points, color, filled)
         self.display_file.add(obj)
         return obj
 

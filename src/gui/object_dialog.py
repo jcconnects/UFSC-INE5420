@@ -7,7 +7,8 @@ Trabalho 1.4 adds the "Filled" checkbox: the user decides at creation whether a
 polygon is drawn as a wireframe or filled. It only affects wireframes; points
 and lines have no interior to fill. Trabalho 1.7 makes the world 3D: every type
 accepts `(x, y, z)` (a missing z is 0), and an object3d takes its points in
-pairs, one segment per pair.
+pairs, one segment per pair. Trabalho 1.9's surface takes the rows of its
+geometry matrices split by `;`, 16 control points per patch.
 """
 
 from __future__ import annotations
@@ -87,6 +88,13 @@ class ObjectDialog(QDialog):
             # consecutive point pairs.
             self.coordinates_field.setPlaceholderText(
                 "(x1,y1,z1),(x2,y2,z2),... — pairs: one segment per pair"
+            )
+        elif object_type is ObjectType.SURFACE:
+            # Trabalho 1.9: the geometry matrix row by row, read 16 points at a
+            # time -- every 4 rows of 4 points make one patch.
+            self.coordinates_field.setPlaceholderText(
+                "(x11,y11,z11),...,(x14,y14,z14);(x21,...);... — 4 points per row, "
+                "rows split by ';', every 4 rows (16 points) = one patch"
             )
         else:
             self.coordinates_field.setPlaceholderText("(x1, y1, z1),(x2, y2, z2),... — z optional")
