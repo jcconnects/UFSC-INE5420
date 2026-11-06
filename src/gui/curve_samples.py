@@ -1,9 +1,8 @@
 """Built-in Bézier curve samples for the Samples menu (trabalho 1.5).
 
-Curves live in code, not in the .obj files: the p/l subset of Wavefront .obj the
-project writes cannot express control points, and curves are skipped on export
-(see persistence.obj_descriptor). So the demo curves are small control-point
-literals here instead, mirroring how the .obj scenes are shipped.
+These demo curves are small control-point literals in code, one click each. A
+curve can also live in a .obj file as a free-form `curv` element since
+trabalho 1.10 (see persistence.obj_descriptor and samples/curves.obj).
 
 Each sample is a CurveSample: a name, its flat control-point list (4, 7, 10, ...
 points -- four per first segment, three per extra, sharing the join point for at

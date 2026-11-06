@@ -73,6 +73,7 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 │    curves.py            blending functions de Bézier (1.5)      │
 │    bspline.py           B-Spline uniforme, Forward Diff. (1.6)  │
 │    surfaces.py          retalhos bicúbicos de Bézier (1.9)      │
+│    bspline_surface.py   superfícies B-Spline por FD (1.10)      │
 │    display_file.py      coleção nomeada + cache de coords SCN   │
 │    window.py            região de mundo + pan/zoom/rotate       │
 │    normalization.py     mundo → SCN (view transform)            │
@@ -282,13 +283,53 @@ Passar de 2D a 3D = inserir um item na lista + trocar o tipo de coordenada. Nada
 > janelas 4×4 deslizantes, a mesma grade amostrada por forward differences) mais um ramo `cstype bspline` na
 > leitura; o pipeline não muda.
 
+> **Estado no 1.10 (implementado).** De novo "acrescenta um tipo de objeto": nenhum estágio novo e nenhuma
+> mudança em `render()`. **Matemática:** nasceu `domain/bspline_surface.py` (funções puras). O usuário digita
+> **uma** rede de controle m×n (4×4 a 20×20, retangular vale) e `submatrices` a divide sozinha em janelas 4×4
+> deslizantes, linha a linha — (m−3)(n−3) retalhos, como a janela de 4 pontos da curva do 1.6; retalhos
+> vizinhos dividem pontos de controle e se juntam com continuidade C2. Por retalho e por eixo,
+> C = M_BS·G·M_BSᵀ, e `patch_curves(G, n)` é o `DrawSurfaceFwdDif` de Foley & van Dam (Fig. 11.46)
+> **corrigido**: com δ = 1/n, DD = E(δ)·C·E(δ)ᵀ (`forward_difference_matrix`); a linha 0 de DD é o estado
+> [f, Δf, Δ²f, Δ³f] da curva s = 0 ao longo de t, desenhada só com somas por
+> `bspline.forward_difference_points` (o `DrawCurveFwdDif`, extraído do laço do 1.6); depois as linhas são
+> atualizadas de cima para baixo (l0 += l1, l1 += l2, l2 += l3) e s avança δ — n+1 curvas de s constante.
+> **As correções do professor** (gist `ForwardDiff_Foley_vanDam.pde`): (1) **erro** — o livro desenha cada
+> curva com um número arbitrário de pontos; ela tem de dar exatamente os n passos do δ = 1/n que montou E,
+> senão não chega à borda do retalho; (2) **passo omitido** — montar as matrizes E(δ); (3) **passo omitido**
+> — as atualizações consomem DD, então ele é **reconstruído** a partir de C depois das curvas de s constante
+> e **transposto** para as de t constante. **Armadilha do port:** o gist calcula C = M·G·M, que só vale porque
+> a base de Bézier é simétrica; M_BS não é, então aqui C usa a transposta de verdade, M_BSᵀ. A base continua
+> num lugar só (`bspline.BSPLINE_MATRIX`, agora público), e nasceu `geometry.transpose`. **Objeto:**
+> `BSplineSurface` (`ObjectType.BSPLINE_SURFACE`) guarda a rede inteira achatada em `coordinates` (mais
+> `columns`), então `transform`, o diálogo de transformação e `center()` valem sem mudança; `patches` devolve
+> as sub-matrizes (a "lista de matrizes" do 1.9) e `to_segments()` liga os pontos de cada curva das duas
+> famílias — o ramo de clipagem de retas, 2D em SCN, como no 1.9. `STEPS_PER_PATCH = 6`: um retalho B-Spline
+> cobre uma célula da rede onde o de Bézier cobre três, então 6 ainda é mais denso que os 10 do Bézier, e a
+> rede 20×20 (289 retalhos) fica em ~24 mil segmentos, ~0,3 s por quadro. **Entrada:** tipo
+> `bspline_surface` no diálogo *Add object*: a matriz inteira, linhas por `;` (o mesmo `parse_matrix`);
+> tamanho fora de 4..20 ou linhas de tamanhos diferentes dão *Invalid object*. **`.obj`:** leitura e escrita
+> da superfície como **um** `surf` (`cstype bspline`, `deg 3 3`, `surf 3 n 3 m` + a rede linha a linha, u
+> variando mais rápido, `parm u 0 … n+3`, `parm v 0 … m+3`, `end`). Na leitura, a contagem de nós do
+> `parm u` dá o tamanho da linha (uma cúbica sobre n pontos tem n + 4 nós); os **valores** dos nós são
+> ignorados (base uniforme). Como na avaliação todos os objetos entram por `.obj`, as **curvas** também
+> passaram a ser lidas e gravadas, como `curv`: Bézier (`cstype bezier`, `deg 3`, `curv 0 k`,
+> `parm u 0 … k`) e B-Spline (`cstype bspline`, `deg 3`, `curv 3 n`, `parm u 0 … n+3`); a exportação deixou
+> de pulá-las. Superfície B-Spline e curva são o único elemento do seu objeto; base racional, outro grau,
+> `parm u` ausente ou que não divide a rede dão erro claro. **Samples:** `samples/3d/bspline_surface.obj`
+> (um morro sobre uma rede 7×7 = 16 retalhos) e `samples/curves.obj` (a onda de Bézier de 7 pontos e a
+> B-Spline de 10 pontos do exercício 1.4.3). **Testes:** o Dataset 1 do exercício de sala desenhado como
+> B-Spline (Q(0,0) = (100, 100, 625/9), Q(½,½) = (150, 150, 100·(23/24)²), Q(1,1) = (200, 200, 625/9) — este
+> só fecha com o número certo de passos), todos os pontos das duas famílias contra a soma direta das blending
+> functions uniformes (prende a reconstrução de DD e a transposta de M_BS), linhas iguais = a B-Spline do
+> 1.6, vizinhos dividindo a curva da borda, e o round-trip `.obj` de superfícies e curvas.
+
 ## 4. Módulos do domínio
 
 ### 4.1 `geometry.py` — dimensão-agnóstico desde o início
 - `Point` (não `Point2D`): guarda um vetor homogêneo. Em 2D `(x, y, 1)`, em 3D `(x, y, z, 1)`.
   A dimensão é o tamanho do vetor, não o nome da classe.
 - `Vector` / operações e produto por matriz.
-- `Matrix` n×n com `multiply`, `compose`.
+- `Matrix` n×n com `multiply`, `compose` e, desde o 1.10, `transpose`.
 - **Por que agora:** o 1.7 troca 3 coords por 4 e 3×3 por 4×4. Se o código nunca assumiu "2", essa troca é
   transparente. Este é o seam #1 do plano 2D→3D.
 
@@ -311,7 +352,8 @@ GraphicObject (abstrata)
        ├── Curve2D      (1.5)  amostra a curva de Bézier e devolve segmentos
        ├── BSpline      (1.6)  B-Spline uniforme por Forward Differences
        ├── Object3D     (1.7)  modelo de arame: lista de segmentos (pares de pontos 3D)
-       └── BezierSurface (1.9) lista de retalhos 4×4 → grade de curvas → segmentos
+       ├── BezierSurface (1.9) lista de retalhos 4×4 → grade de curvas → segmentos
+       └── BSplineSurface (1.10) rede m×n (4×4 a 20×20) → sub-matrizes 4×4 → curvas por FD → segmentos
 ```
 - **`to_segments()` é a chave:** o renderer só sabe desenhar segmentos. Curva, superfície e objeto 3D
   projetado todos entram por esse mesmo método. Adicionar um tipo novo = uma subclasse, zero mudança na GUI.
@@ -366,7 +408,9 @@ GraphicObject (abstrata)
   geometria e lê cada uma com `parse_coordinates`.
 - `obj_descriptor` (a partir do 1.3): `DescritorOBJ` transcreve cada objeto para Wavefront `.obj` (nome,
   tipo, vértices, arestas) e lê de volta. Módulo de persistência separado do domínio geométrico. No 1.9 lê
-  e grava superfícies como `surf` free-form (`cstype bezier`, `deg 3 3`), um `surf` por retalho.
+  e grava superfícies como `surf` free-form (`cstype bezier`, `deg 3 3`), um `surf` por retalho. No 1.10,
+  a superfície B-Spline como um `surf` só (`cstype bspline`), com a linha dimensionada pelo `parm u`, e as
+  curvas de Bézier e B-Spline como `curv`.
 
 ## 5. Camada de aplicação — a espinha dorsal
 
@@ -380,6 +424,7 @@ Pipeline 2D (1.1):        [ to_segments, normalize(≈id), viewport ]
 1.7 (implementado):       [ to_segments, view(VRP/VPN/VUP), PROJECT, normalize, clip, viewport ]
 1.8 (implementado):       [ to_segments, view(VRP|COP), PROJECT(paralela|perspectiva ÷W), normalize, clip 2D, viewport ]
 1.9 (implementado):       mesmos estágios; a superfície entra como os segmentos da sua grade de curvas
+1.10 (implementado):      mesmos estágios; cada sub-matriz entra como suas curvas de s e t constantes (FD)
 ```
 No 1.7 o "normalize" se dividiu em view + normalização com o PROJECT no meio (a ordem do algoritmo da aula);
 como os três são lineares, viram uma só matriz por frame (`normalization.world_to_scn_matrix`). No 1.8 a
@@ -410,7 +455,8 @@ A GUI é imune à passagem 2D→3D: ela só executa `DrawCommand`s. Um cubo proj
 ```
 src/
   domain/
-    geometry.py  transforms.py  objects.py  curves.py  bspline.py  surfaces.py  display_file.py
+    geometry.py  transforms.py  objects.py  curves.py  bspline.py  surfaces.py  bspline_surface.py
+    display_file.py
     window.py    normalization.py  projection.py  clipping.py  viewport.py
   persistence/            # nome evita colisão com a stdlib `io`
     parser.py    obj_descriptor.py

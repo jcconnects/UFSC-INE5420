@@ -2,7 +2,7 @@
 
 The hierarchy the spec implies: Point / Line / Wireframe. It only grows in
 later trabalhos (Curve2D in 1.5, BSpline in 1.6, Object3D in 1.7, BezierSurface
-in 1.9).
+in 1.9, BSplineSurface in 1.10).
 
 Every object implements `to_segments()`, which decomposes it into line
 segments. This is the guarantee that keeps the renderer trivial forever: the
@@ -19,7 +19,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 
-from . import bspline, curves, surfaces
+from . import bspline, bspline_surface, curves, surfaces
 from .geometry import Point, centroid
 from .surfaces import Patch
 
@@ -32,6 +32,7 @@ class ObjectType(Enum):
     BSPLINE = "bspline"
     OBJECT3D = "object3d"
     SURFACE = "surface"
+    BSPLINE_SURFACE = "bspline_surface"
 
 
 Segment = tuple[Point, Point]
@@ -357,6 +358,65 @@ class BezierSurface(GraphicObject):
     def center(self) -> Point:
         """Centroid of the distinct control points (see Object3D.center)."""
         return centroid(self.vertices())
+
+
+class BSplineSurface(GraphicObject):
+    """A bicubic B-Spline surface drawn by Forward Differences (trabalho 1.10).
+
+    Holds one m x n control net, 4x4 up to 20x20, flattened row by row in
+    `coordinates` (with its row length in `columns`), so the inherited
+    `transform` moves every control point with one matrix. Its patches are
+    the net's sliding 4x4 sub-matrices (bspline_surface.submatrices), so
+    neighbouring patches share control points without storing them twice.
+
+    `to_segments()` draws each patch as its curves of constant s and t,
+    computed by Forward Differences (bspline_surface.patch_curves), so the
+    surface draws (and clips) as line segments like every other object.
+    """
+
+    MIN_SIZE = 4
+    MAX_SIZE = 20
+    # n: each patch draws n+1 curves per parameter, n steps each. A B-Spline
+    # patch spans one cell of its net where a Bézier patch spans three, so 6
+    # is still denser than BezierSurface's 10 and keeps the largest net (289
+    # patches) at ~24k segments, about 0.3 s a frame.
+    STEPS_PER_PATCH = 6
+
+    def __init__(self, name: str, control_net: list[list[Point]], color: Color = BLACK) -> None:
+        rows = len(control_net)
+        columns = len(control_net[0]) if control_net else 0
+        if any(len(row) != columns for row in control_net):
+            raise ValueError("every row of the control matrix needs the same number of points")
+        if not (
+            self.MIN_SIZE <= rows <= self.MAX_SIZE and self.MIN_SIZE <= columns <= self.MAX_SIZE
+        ):
+            raise ValueError(
+                f"a B-Spline surface takes a control matrix from {self.MIN_SIZE}x"
+                f"{self.MIN_SIZE} to {self.MAX_SIZE}x{self.MAX_SIZE} (got {rows}x{columns})"
+            )
+        super().__init__(name, [point for row in control_net for point in row], color)
+        self.columns = columns
+
+    @property
+    def type(self) -> ObjectType:
+        return ObjectType.BSPLINE_SURFACE
+
+    @property
+    def control_net(self) -> list[list[Point]]:
+        points = self.coordinates
+        return [points[i : i + self.columns] for i in range(0, len(points), self.columns)]
+
+    @property
+    def patches(self) -> list[Patch]:
+        """The geometry matrices: one 4x4 sub-matrix of the net per patch."""
+        return bspline_surface.submatrices(self.control_net)
+
+    def to_segments(self) -> list[Segment]:
+        segments: list[Segment] = []
+        for patch in self.patches:
+            for curve in bspline_surface.patch_curves(patch, self.STEPS_PER_PATCH):
+                segments.extend(zip(curve, curve[1:]))
+        return segments
 
 
 def _distinct(points: list[Point]) -> list[Point]:

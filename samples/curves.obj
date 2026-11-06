@@ -1,0 +1,36 @@
+# SGI - INE5420 sample: a Bezier curve and a B-Spline as .obj curves (trabalho 1.10)
+# Each curve is one free-form `curv` over its control points, under the
+# `cstype` and `deg` in force. bezier_wave is the 7-point wave of the
+# Curves (Bezier) menu: two cubic segments sharing their joint, spanning
+# parameters 0..2. bspline_exercise is the 10-point B-Spline of the class
+# exercise (1.4.3): 7 segments, 10 + 4 uniform knots. Both lie on z = 0,
+# the wave raised by 40 and the B-Spline lowered by 50 so they do not cross.
+o bezier_wave
+v -80 40 0
+v -50 100 0
+v -20 100 0
+v 0 40 0
+v 20 -20 0
+v 50 -20 0
+v 80 40 0
+cstype bezier
+deg 3
+curv 0 2 1 2 3 4 5 6 7
+parm u 0 1 2
+end
+o bspline_exercise
+v -45 -65 0
+v -30 -35 0
+v -15 -80 0
+v 0 -65 0
+v 15 -50 0
+v 0 -20 0
+v 30 -20 0
+v 45 -20 0
+v 30 -50 0
+v 45 -65 0
+cstype bspline
+deg 3
+curv 3 10 8 9 10 11 12 13 14 15 16 17
+parm u 0 1 2 3 4 5 6 7 8 9 10 11 12 13
+end

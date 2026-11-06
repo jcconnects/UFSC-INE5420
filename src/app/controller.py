@@ -9,7 +9,8 @@ Since trabalho 1.7 the world is 3D: typed planar input `(x, y)` is lifted to
 window navigates in space. Trabalho 1.8 adds the choice of projection: the
 parallel orthogonal one of 1.7 (the default) or a perspective from a center of
 projection the user can move. Trabalho 1.9 adds bicubic Bézier surfaces, typed
-as the rows of their geometry matrices.
+as the rows of their geometry matrices. Trabalho 1.10 adds bicubic B-Spline
+surfaces, typed as one control matrix of 4x4 up to 20x20.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from domain.objects import (
     BLACK,
     BezierSurface,
     BSpline,
+    BSplineSurface,
     Color,
     Curve2D,
     GraphicObject,
@@ -71,14 +73,13 @@ class Controller:
         """Parse coordinates and add a new object of the requested type.
 
         The world is 3D: `(x, y)` is read as `(x, y, 0)`, and `(x, y, z)` as is.
-        A surface takes its matrix rows split by `;`, 4 rows (16 points) per patch.
+        A surface takes its matrix rows split by `;`, 4 rows (16 points) per patch;
+        a B-Spline surface takes its whole control matrix the same way.
         """
         if object_type is ObjectType.SURFACE:
-            rows = [
-                [point.lifted(WORLD_DIMENSION) for point in row]
-                for row in parse_matrix(raw_coordinates)
-            ]
-            obj = BezierSurface.from_rows(name, rows, color)
+            obj: GraphicObject = BezierSurface.from_rows(name, self._matrix(raw_coordinates), color)
+        elif object_type is ObjectType.BSPLINE_SURFACE:
+            obj = BSplineSurface(name, self._matrix(raw_coordinates), color)
         else:
             points = [
                 point.lifted(WORLD_DIMENSION) for point in parse_coordinates(raw_coordinates)
@@ -86,6 +87,14 @@ class Controller:
             obj = self._build(name, object_type, points, color, filled)
         self.display_file.add(obj)
         return obj
+
+    @staticmethod
+    def _matrix(raw_coordinates: str) -> list[list[Point]]:
+        """Matrix rows split by `;`, every point lifted to the 3D world."""
+        return [
+            [point.lifted(WORLD_DIMENSION) for point in row]
+            for row in parse_matrix(raw_coordinates)
+        ]
 
     @staticmethod
     def _build(

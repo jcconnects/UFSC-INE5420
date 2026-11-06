@@ -6,6 +6,7 @@ from domain.geometry import Point
 from domain.objects import (
     BezierSurface,
     BSpline,
+    BSplineSurface,
     Curve2D,
     Line,
     Object3D,
@@ -61,12 +62,39 @@ def test_roundtrip_preserves_geometry_and_types():
     assert [o.coordinates for o in restored] == [o.coordinates for o in world]
 
 
-def test_curves_are_skipped_on_export():
-    # Control points are not polyline geometry: writing them as `l` would load
-    # back as a wireframe, so both curve kinds are left out of the file.
-    controls = [Point(0, 0), Point(1, 1), Point(2, 0), Point(3, 1)]
-    text = to_obj([Curve2D("bezier", controls), BSpline("bspline", controls)])
-    assert text == "# SGI - INE5420 world export (Wavefront .obj)\n"
+def test_curves_roundtrip_as_free_form_curv_elements():
+    # Each curve is one `curv` over its control points: a Bézier chain of 2
+    # segments spans parameters 0..2; a cubic B-Spline of 5 points takes the
+    # 5 + 4 uniform knots 0..8 and spans 3..5.
+    chain = [Point(x, (x % 3) * 2 - 2, 0) for x in range(7)]
+    controls = [Point(x, x % 2, 1) for x in range(5)]
+    text = to_obj([Curve2D("bezier", chain), BSpline("bspline", controls)])
+    lines = text.splitlines()
+    assert "curv 0 2 1 2 3 4 5 6 7" in lines and "parm u 0 1 2" in lines
+    assert "curv 3 5 8 9 10 11 12" in lines and "parm u 0 1 2 3 4 5 6 7 8" in lines
+    restored = from_obj(text)
+    assert [(o.name, o.type) for o in restored] == [
+        ("bezier", ObjectType.CURVE),
+        ("bspline", ObjectType.BSPLINE),
+    ]
+    assert [o.coordinates for o in restored] == [chain, controls]
+
+
+def test_a_blender_style_curv_with_relative_refs_loads():
+    # Blender's "Write Nurbs" writes `v x y z w`, refs relative to the end and
+    # a clamped knot vector (read, but drawn as the uniform B-Spline).
+    text = (
+        "o NurbsCurve\n"
+        "v -2 0 0 1\nv -1 1 0 1\nv 0 0 0 1\nv 1 1 0 1\nv 2 0 0 1\n"
+        "g NurbsCurve\n"
+        "cstype bspline\ndeg 3\n"
+        "curv 0.0 1.0 -5 -4 -3 -2 -1\n"
+        "parm u 0.0 0.0 0.0 0.0 0.5 1.0 1.0 1.0 1.0\n"
+        "end\n"
+    )
+    [curve] = from_obj(text)
+    assert curve.type is ObjectType.BSPLINE
+    assert curve.coordinates == [Point(x, x % 2, 0) for x in range(-2, 3)]
 
 
 def test_roundtrip_of_a_triangle_stays_closed_wireframe():
@@ -216,10 +244,12 @@ def test_the_spec_bezier_patch_loads_as_a_surface():
     assert corners == [Point(5, -5, 0), Point(5, 5, 0), Point(-5, -5, 0), Point(-5, 5, 0)]
 
 
-def test_only_bicubic_bezier_surfaces_load():
-    # Another basis (the B-Spline of 1.10, a rational Bézier) is not read yet.
+def test_only_cubic_bezier_and_bspline_free_forms_load():
+    # A rational basis or another degree is not what the SGI draws.
     with pytest.raises(ValueError):
-        from_obj(_SPEC_BEZIER_PATCH.replace("cstype bezier", "cstype bspline"))
+        from_obj(_SPEC_BEZIER_PATCH.replace("cstype bezier", "cstype rat bezier"))
+    with pytest.raises(ValueError):
+        from_obj(_SPEC_BEZIER_PATCH.replace("deg 3 3", "deg 2 2"))
 
 
 def test_a_surface_does_not_mix_with_other_elements():
@@ -240,3 +270,54 @@ def test_surface_roundtrip_keeps_its_patches():
     assert [o.type for o in restored] == [ObjectType.POINT, ObjectType.SURFACE]
     assert restored[1].name == "terrain"
     assert restored[1].patches == [first, second]
+
+
+# --- trabalho 1.10: B-Spline surfaces as one free-form net -------------------
+
+# A hand-written 4 x 5 net, vertex (row r, column c) = (c, r, r*c), listed u
+# (the column) fastest. A cubic over 5 points per row takes 5 + 4 = 9 knots,
+# so `parm u` is what sizes the rows.
+_NET_VERTICES = "".join(f"v {c} {r} {r * c}\n" for r in range(4) for c in range(5))
+_NET_SURF = (
+    "cstype bspline\n"
+    "deg 3 3\n"
+    "surf 3 5 3 4 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\n"
+    "parm u 0 1 2 3 4 5 6 7 8\n"
+    "parm v 0 1 2 3 4 5 6 7\n"
+    "end\n"
+)
+_BSPLINE_NET = "o net\n" + _NET_VERTICES + _NET_SURF
+
+
+def test_a_bspline_surf_is_one_control_net_sized_by_its_parm_u():
+    [surface] = from_obj(_BSPLINE_NET)
+    assert surface.type is ObjectType.BSPLINE_SURFACE
+    assert len(surface.control_net) == 4 and surface.columns == 5
+    assert surface.control_net[1][4] == Point(4, 1, 4)
+    assert len(surface.patches) == 2
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        _BSPLINE_NET.replace("parm u 0 1 2 3 4 5 6 7 8\n", ""),  # no parm u
+        _BSPLINE_NET.replace("parm u 0 1 2 3 4 5 6 7 8", "parm u 0 1 2 3 4 5 6 7 8 9 10"),
+        _BSPLINE_NET + _NET_SURF,  # two B-Spline surfaces in one object
+        _BSPLINE_NET + "l 1 2\n",  # mixed with a polyline
+    ],
+    ids=["no-parm-u", "rows-do-not-divide", "two-surfs", "mixed"],
+)
+def test_a_bspline_surf_that_cannot_be_sized_alone_is_rejected(broken):
+    with pytest.raises(ValueError):
+        from_obj(broken)
+
+
+def test_bspline_surface_roundtrip_keeps_its_net():
+    # 5 rows of 6: not square, so rows and columns cannot be swapped unseen.
+    net = [[Point(c, r, (r - c) ** 2) for c in range(6)] for r in range(5)]
+    text = to_obj([Point2D("dot", Point(9, 9, 9)), BSplineSurface("hill", net)])
+    assert text.count("\nsurf ") == 1
+    restored = from_obj(text)
+    assert [o.type for o in restored] == [ObjectType.POINT, ObjectType.BSPLINE_SURFACE]
+    assert restored[1].name == "hill"
+    assert restored[1].control_net == net

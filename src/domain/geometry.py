@@ -121,6 +121,11 @@ def multiply(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> list
     ]
 
 
+def transpose(matrix: Sequence[Sequence[float]]) -> list[list[float]]:
+    """The transpose of a matrix: its rows become columns."""
+    return [list(column) for column in zip(*matrix)]
+
+
 def compose(*matrices: Sequence[Sequence[float]]) -> list[list[float]]:
     """Compose transforms left-to-right: compose(A, B) applies A then B."""
     if not matrices:
