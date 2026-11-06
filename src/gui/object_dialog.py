@@ -8,7 +8,8 @@ polygon is drawn as a wireframe or filled. It only affects wireframes; points
 and lines have no interior to fill. Trabalho 1.7 makes the world 3D: every type
 accepts `(x, y, z)` (a missing z is 0), and an object3d takes its points in
 pairs, one segment per pair. Trabalho 1.9's surface takes the rows of its
-geometry matrices split by `;`, 16 control points per patch.
+geometry matrices split by `;`, 16 control points per patch. Trabalho 1.10's
+B-Spline surface takes one control matrix of 4x4 up to 20x20 the same way.
 """
 
 from __future__ import annotations
@@ -95,6 +96,13 @@ class ObjectDialog(QDialog):
             self.coordinates_field.setPlaceholderText(
                 "(x11,y11,z11),...,(x14,y14,z14);(x21,...);... — 4 points per row, "
                 "rows split by ';', every 4 rows (16 points) = one patch"
+            )
+        elif object_type is ObjectType.BSPLINE_SURFACE:
+            # Trabalho 1.10: the whole control matrix; the SGI splits it into
+            # its 4x4 sub-matrices, one patch each.
+            self.coordinates_field.setPlaceholderText(
+                "(x11,y11,z11),...;(x21,...);... — control matrix 4x4 to 20x20, "
+                "rows split by ';'"
             )
         else:
             self.coordinates_field.setPlaceholderText("(x1, y1, z1),(x2, y2, z2),... — z optional")

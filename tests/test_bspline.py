@@ -11,7 +11,7 @@ import math
 import pytest
 
 from domain.bspline import (
-    _BSPLINE_MATRIX,
+    BSPLINE_MATRIX,
     POINTS_PER_SEGMENT,
     sample_bspline,
     segment_count,
@@ -30,7 +30,7 @@ def _direct_point(window, t):
     dimension = window[0].dimension
     components = []
     for axis in range(dimension):
-        coeff = [sum(_BSPLINE_MATRIX[r][j] * window[j][axis] for j in range(4)) for r in range(4)]
+        coeff = [sum(BSPLINE_MATRIX[r][j] * window[j][axis] for j in range(4)) for r in range(4)]
         components.append(sum(powers[r] * coeff[r] for r in range(4)))
     return Point(*components)
 

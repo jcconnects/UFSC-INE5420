@@ -43,13 +43,16 @@ dev/notebook dependency, the domain stays dependency-free).
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from .geometry import Point
 
 # Uniform cubic B-Spline basis matrix M_BS, 1/6 already distributed into the
 # entries. Rows multiply the power basis T = [t³, t², t, 1]; columns weight the
-# four control points of the sliding window.
+# four control points of the sliding window. The bicubic surface (trabalho
+# 1.10) reuses it.
 _SIXTH = 1.0 / 6.0
-_BSPLINE_MATRIX = (
+BSPLINE_MATRIX = (
     (-_SIXTH, 3.0 * _SIXTH, -3.0 * _SIXTH, _SIXTH),
     (3.0 * _SIXTH, -6.0 * _SIXTH, 3.0 * _SIXTH, 0.0),
     (-3.0 * _SIXTH, 0.0, 3.0 * _SIXTH, 0.0),
@@ -81,7 +84,7 @@ def _coefficients(window: tuple[Point, Point, Point, Point]) -> list[list[float]
     dimension = window[0].dimension
     return [
         [
-            sum(_BSPLINE_MATRIX[row][j] * window[j][axis] for j in range(4))
+            sum(BSPLINE_MATRIX[row][j] * window[j][axis] for j in range(4))
             for row in range(4)
         ]
         for axis in range(dimension)
@@ -117,15 +120,23 @@ def _sample_segment(
     emitting a Point at each of t = 0, 1/steps, ..., 1.
     """
     delta = 1.0 / steps
-    axis_coeffs = _coefficients(window)
-    # states[axis] = [f, Δf, Δ²f, Δ³f], mutated in place as the curve advances.
-    states = [list(_forward_difference_state(coeffs, delta)) for coeffs in axis_coeffs]
+    states = [_forward_difference_state(coeffs, delta) for coeffs in _coefficients(window)]
+    return forward_difference_points(states, steps)
 
+
+def forward_difference_points(states: Sequence[Sequence[float]], steps: int) -> list[Point]:
+    """Advance one [f, Δf, Δ²f, Δ³f] state per axis `steps` times: steps+1 points.
+
+    Foley's DrawCurveFwdDif, additions only. It works on a copy, so the caller's
+    states stay as given (the bicubic surface of trabalho 1.10 keeps its own).
+    """
+    # running[axis] = [f, Δf, Δ²f, Δ³f], mutated in place as the curve advances.
+    running = [list(state) for state in states]
     points: list[Point] = []
     for _ in range(steps + 1):
-        points.append(Point(*(state[0] for state in states)))
+        points.append(Point(*(state[0] for state in running)))
         # Forward Differences update: additions only -- the essence of the method.
-        for state in states:
+        for state in running:
             state[0] += state[1]
             state[1] += state[2]
             state[2] += state[3]
