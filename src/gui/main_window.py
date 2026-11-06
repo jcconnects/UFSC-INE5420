@@ -91,6 +91,9 @@ _SAMPLE_DEFAULT: dict[str, tuple[int, int, int]] = {
     "street": (100, 149, 237),       # cornflower-blue buildings
     # Bézier surface (trabalho 1.9)
     "bezier_surface": (60, 179, 113),  # medium sea-green terrain
+    # B-Spline surface and .obj curves (trabalho 1.10)
+    "bspline_surface": (244, 164, 96),  # sandy-brown hill
+    "curves": (200, 200, 200),       # light grey
 }
 _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # house
@@ -109,6 +112,9 @@ _OBJECT_COLORS: dict[str, tuple[int, int, int]] = {
     # street
     "curbs": (160, 160, 160),        # grey curbs
     "lane": (255, 215, 0),           # gold lane marks
+    # curves
+    "bezier_wave": (30, 144, 255),   # dodger-blue Bézier
+    "bspline_exercise": (255, 140, 0),  # dark-orange B-Spline
 }
 # A collision-renamed object ("petal_1" -> "petal_1_2") should still match its
 # original palette entry. This strips exactly one trailing "_<digits>".
@@ -354,9 +360,9 @@ class MainWindow(QMainWindow):
             action.triggered.connect(lambda _checked, p=path: self._load_sample(p))
 
     def _build_curve_samples_menu(self, samples_menu) -> None:
-        # Bézier curve demos (trabalho 1.5). They live in code, not .obj (the
-        # p/l format cannot carry control points), so they are added straight
-        # through the controller instead of loaded as files.
+        # Bézier curve demos (trabalho 1.5), kept in code and added straight
+        # through the controller. Since 1.10 a .obj file can hold curves too
+        # (samples/curves.obj, listed with the scenes above).
         samples_menu.addSeparator()
         curves_menu = samples_menu.addMenu("Curves (Bézier)")
         for sample in CURVE_SAMPLES:

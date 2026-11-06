@@ -70,3 +70,12 @@ def test_bezier_surface_sample_has_three_patches():
     objects = Controller().load_obj(str(_SAMPLES / "3d" / "bezier_surface.obj"))
     assert [o.type for o in objects] == [ObjectType.SURFACE]
     assert len(objects[0].patches) == 3
+
+
+@pytest.mark.skipif(not (_SAMPLES / "3d").is_dir(), reason="samples/3d not present")
+def test_bspline_surface_sample_splits_into_its_submatrices():
+    # Trabalho 1.10 keeps 1.9's "at least 3 patches from a .obj": a 7 x 7 net
+    # holds (7-3)(7-3) = 16.
+    objects = Controller().load_obj(str(_SAMPLES / "3d" / "bspline_surface.obj"))
+    assert [o.type for o in objects] == [ObjectType.BSPLINE_SURFACE]
+    assert len(objects[0].patches) == 16
